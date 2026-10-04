@@ -1125,15 +1125,10 @@ app.post('/api/users/login', (req: Request, res: Response) => {
     return res.status(401).json({ error: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' });
   }
 
-  if (user.status === 'pending' || (!user.active && user.status !== 'rejected')) {
-    return res.status(403).json({ 
-      error: 'บัญชีของคุณอยู่ระหว่างรอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งาน',
-      isPending: true
-    });
-  }
-
-  if (user.status === 'rejected' || !user.active) {
-    return res.status(403).json({ error: 'บัญชีนี้ถูกระงับหรือไม่ได้รับการอนุมัติ กรุณาติดต่อหัวหน้ากิลด์' });
+  // Auto-activate any user so no approval is required
+  if (user.status === 'pending' || !user.active) {
+    user.active = true;
+    user.status = 'active';
   }
 
   if (user.passwordHash && user.passwordHash !== password) {
@@ -1147,9 +1142,9 @@ app.post('/api/users/login', (req: Request, res: Response) => {
   res.json({ success: true, user: safeUser });
 });
 
-// Admin / Public: Create User ID
+// Admin / Public: Create User ID (No permission request needed, ready to use immediately)
 app.post('/api/users/create', (req: Request, res: Response) => {
-  const { username, displayName, password, role, createdByAdmin } = req.body;
+  const { username, displayName, password, role } = req.body;
   if (!username || !displayName) {
     return res.status(400).json({ error: 'กรุณากรอกชื่อผู้ใช้และชื่อแสดง' });
   }
@@ -1159,8 +1154,6 @@ app.post('/api/users/create', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'ชื่อผู้ใช้นี้มีในระบบแล้ว' });
   }
 
-  const isPending = !createdByAdmin && role !== 'admin';
-
   const newUser: UserAccount = {
     id: `user-${Date.now()}`,
     username,
@@ -1168,8 +1161,8 @@ app.post('/api/users/create', (req: Request, res: Response) => {
     role: role === 'admin' ? 'admin' : 'member',
     passwordHash: password || '123456',
     createdAt: new Date().toISOString(),
-    active: !isPending,
-    status: isPending ? 'pending' : 'active',
+    active: true,
+    status: 'active',
   };
 
   state.users.push(newUser);
@@ -1177,7 +1170,7 @@ app.post('/api/users/create', (req: Request, res: Response) => {
   broadcastSSE('users_update', state.users.map(({ passwordHash: _, ...u }) => u));
 
   const { passwordHash: _, ...safeUser } = newUser;
-  res.json({ success: true, user: safeUser, isPending });
+  res.json({ success: true, user: safeUser, isPending: false });
 });
 
 // Admin: Update User Role / Status
