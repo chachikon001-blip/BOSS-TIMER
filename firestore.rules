@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Default Deny Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 256;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validate Boss Entity
+    function isValidBoss(data) {
+      return data.id is string && data.id.size() <= 256
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && (data.server == 'main' || data.server == 'sub')
+        && data.respawnMinutes is number && data.respawnMinutes > 0;
+    }
+
+    // Validate User Entity
+    function isValidUser(data) {
+      return data.id is string && data.id.size() <= 256
+        && data.username is string && data.username.size() > 0 && data.username.size() <= 100
+        && (data.role == 'admin' || data.role == 'member')
+        && data.active is bool;
+    }
+
+    // Validate Settings Entity
+    function isValidSettings(data) {
+      return (!('enabled' in data) || data.enabled is bool)
+        && (!('soundType' in data) || (data.soundType is string && data.soundType.size() <= 100))
+        && (!('soundVolume' in data) || data.soundVolume is number)
+        && (!('discordWebhookUrl' in data) || (data.discordWebhookUrl is string && data.discordWebhookUrl.size() <= 1000))
+        && (!('discordEnabled' in data) || data.discordEnabled is bool)
+        && (!('lineWebhookUrl' in data) || (data.lineWebhookUrl is string && data.lineWebhookUrl.size() <= 1000))
+        && (!('lineEnabled' in data) || data.lineEnabled is bool)
+        && (!('mainServerTag' in data) || (data.mainServerTag is string && data.mainServerTag.size() <= 50))
+        && (!('subServerTag' in data) || (data.subServerTag is string && data.subServerTag.size() <= 50));
+    }
+
+    // Validate SheetConfig Entity
+    function isValidSheetConfig(data) {
+      return (!('sheetId' in data) || (data.sheetId is string && data.sheetId.size() <= 256))
+        && (!('mainGid' in data) || (data.mainGid is string && data.mainGid.size() <= 100))
+        && (!('subGid' in data) || (data.subGid is string && data.subGid.size() <= 100));
+    }
+
+    // Boss Collection
+    match /bosses/{bossId} {
+      allow read: if true;
+      allow create, update: if isValidId(bossId) && isValidBoss(incoming());
+      allow delete: if isValidId(bossId);
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if isValidId(userId) && isValidUser(incoming());
+      allow delete: if isValidId(userId) && userId != 'admin-master';
+    }
+
+    // Settings Collection
+    match /settings/{settingsId} {
+      allow read: if true;
+      allow create, update: if isValidId(settingsId) && isValidSettings(incoming());
+      allow delete: if false;
+    }
+
+    // SheetConfig Collection
+    match /sheetConfig/{configId} {
+      allow read: if true;
+      allow create, update: if isValidId(configId) && isValidSheetConfig(incoming());
+      allow delete: if false;
+    }
+  }
+}

@@ -33,6 +33,8 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   onRestoreBackup,
 }) => {
   const [activeTab, setActiveTab] = useState<'users' | 'create' | 'backup'>('users');
+  const [editingPasswordUserId, setEditingPasswordUserId] = useState<string | null>(null);
+  const [newMemberPassword, setNewMemberPassword] = useState('');
 
   // Form states for creating user
   const [username, setUsername] = useState('');
@@ -180,51 +182,109 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-800">
                     {users.map((u) => (
-                      <tr key={u.id} className="hover:bg-slate-800/40 transition">
-                        <td className="p-3 font-semibold text-slate-200">
-                          {u.displayName}
-                        </td>
-                        <td className="p-3 font-mono text-slate-400">{u.username}</td>
-                        <td className="p-3">
-                          <select
-                            value={u.role}
-                            disabled={u.id === 'admin-master'}
-                            onChange={(e) => onUpdateUser(u.id, { role: e.target.value as 'admin' | 'member' })}
-                            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
-                          >
-                            <option value="admin">แอดมิน (Admin)</option>
-                            <option value="member">สมาชิกทั่วไป (Member)</option>
-                          </select>
-                        </td>
-                        <td className="p-3">
-                          <button
-                            onClick={() => onUpdateUser(u.id, { active: !u.active })}
-                            disabled={u.id === 'admin-master'}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              u.active
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                            }`}
-                          >
-                            {u.active ? 'เปิดใช้งาน' : 'ระงับชั่วคราว'}
-                          </button>
-                        </td>
-                        <td className="p-3 text-right">
-                          {u.id !== 'admin-master' && (
-                            <button
-                              onClick={() => {
-                                if (window.confirm(`ลบผู้ใช้ ${u.username}?`)) {
-                                  onDeleteUser(u.id);
-                                }
-                              }}
-                              className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded transition"
-                              title="ลบผู้ใช้"
+                      <React.Fragment key={u.id}>
+                        <tr className="hover:bg-slate-800/40 transition">
+                          <td className="p-3 font-semibold text-slate-200">
+                            {u.displayName}
+                          </td>
+                          <td className="p-3 font-mono text-slate-400">{u.username}</td>
+                          <td className="p-3">
+                            <select
+                              value={u.role}
+                              disabled={u.id === 'admin-master'}
+                              onChange={(e) => onUpdateUser(u.id, { role: e.target.value as 'admin' | 'member' })}
+                              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <option value="admin">แอดมิน (Admin)</option>
+                              <option value="member">สมาชิกทั่วไป (Member)</option>
+                            </select>
+                          </td>
+                          <td className="p-3">
+                            <button
+                              onClick={() => onUpdateUser(u.id, { active: !u.active })}
+                              disabled={u.id === 'admin-master'}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                u.active
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                              }`}
+                            >
+                              {u.active ? 'เปิดใช้งาน' : 'ระงับชั่วคราว'}
                             </button>
-                          )}
-                        </td>
-                      </tr>
+                          </td>
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setEditingPasswordUserId(editingPasswordUserId === u.id ? null : u.id);
+                                  setNewMemberPassword('');
+                                }}
+                                className="p-1 text-amber-400 hover:text-amber-300 hover:bg-amber-950/40 rounded transition"
+                                title="ตั้งรหัสผ่านใหม่"
+                              >
+                                <Key className="w-3.5 h-3.5" />
+                              </button>
+                              {u.id !== 'admin-master' && (
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`ลบผู้ใช้ ${u.username}?`)) {
+                                      onDeleteUser(u.id);
+                                    }
+                                  }}
+                                  className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded transition"
+                                  title="ลบผู้ใช้"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {editingPasswordUserId === u.id && (
+                          <tr key={`edit-pass-${u.id}`} className="bg-amber-950/30 border-b border-amber-900/30">
+                            <td colSpan={5} className="p-3">
+                              <form
+                                onSubmit={async (e) => {
+                                  e.preventDefault();
+                                  if (!newMemberPassword.trim()) return;
+                                  try {
+                                    await onUpdateUser(u.id, { password: newMemberPassword.trim() });
+                                    setStatusMsg({ type: 'success', text: `เปลี่ยนรหัสผ่านของ ${u.username} เป็น "${newMemberPassword.trim()}" สำเร็จแล้ว!` });
+                                    setEditingPasswordUserId(null);
+                                    setNewMemberPassword('');
+                                  } catch {
+                                    setStatusMsg({ type: 'error', text: 'เปลี่ยนรหัสผ่านไม่สำเร็จ' });
+                                  }
+                                }}
+                                className="flex items-center gap-2 flex-wrap"
+                              >
+                                <span className="text-xs text-amber-300 font-semibold">เปลี่ยนรหัสผ่านใหม่ให้ {u.username}:</span>
+                                <input
+                                  type="text"
+                                  required
+                                  value={newMemberPassword}
+                                  onChange={(e) => setNewMemberPassword(e.target.value)}
+                                  placeholder="พิมพ์รหัสผ่านใหม่ เช่น 123456"
+                                  className="px-2.5 py-1 bg-slate-900 border border-amber-500/50 rounded text-xs text-white focus:outline-none"
+                                />
+                                <button
+                                  type="submit"
+                                  className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-bold transition shadow"
+                                >
+                                  บันทึกรหัสใหม่
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingPasswordUserId(null)}
+                                  className="px-2.5 py-1 text-slate-400 hover:text-slate-200 text-xs"
+                                >
+                                  ยกเลิก
+                                </button>
+                              </form>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>

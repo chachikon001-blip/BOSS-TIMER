@@ -26,6 +26,7 @@ export interface UserAccount {
   displayName: string;
   role: 'admin' | 'member';
   passwordHash?: string;
+  password?: string;
   createdAt: string;
   lastLoginAt?: string;
   active: boolean;

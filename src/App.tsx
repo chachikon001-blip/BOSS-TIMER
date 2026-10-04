@@ -9,7 +9,8 @@ import {
   DEFAULT_SETTINGS, 
   DEFAULT_SHEET_CONFIG, 
   createInitialBosses, 
-  INITIAL_ADMIN_USER 
+  INITIAL_ADMIN_USER,
+  INITIAL_GUILD_USERS 
 } from './data/defaultBosses';
 import { Header } from './components/Header';
 import { StatsOverview } from './components/StatsOverview';
@@ -24,6 +25,7 @@ import { ServerRebootModal } from './components/ServerRebootModal';
 import { ResetAllTimesModal } from './components/ResetAllTimesModal';
 import { AdminModal } from './components/AdminModal';
 import { AuthModal } from './components/AuthModal';
+import { GuildLoginScreen } from './components/GuildLoginScreen';
 import { NotificationToast, AlertNotification } from './components/NotificationToast';
 import { playBossAlert } from './services/audio';
 import { 
@@ -36,6 +38,20 @@ import {
 import { formatRemainingTime } from './utils/time';
 import { Shield, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { getApiUrl, getLiveShareUrl } from './services/apiConfig';
+import {
+  subscribeToFirestoreBosses,
+  subscribeToFirestoreUsers,
+  subscribeToFirestoreSettings,
+  subscribeToFirestoreSheetConfig,
+  saveBossToFirestore,
+  batchSaveBossesToFirestore,
+  deleteBossFromFirestore,
+  saveUserToFirestore,
+  deleteUserFromFirestore,
+  saveSettingsToFirestore,
+  saveSheetConfigToFirestore,
+  seedFirestoreIfEmpty
+} from './services/firestoreSync';
 
 export default function App() {
   // Core Data States
@@ -44,17 +60,17 @@ export default function App() {
     if (cached && cached.length >= 90) return cached;
     return createInitialBosses();
   });
-  const [users, setUsers] = useState<UserAccount[]>([INITIAL_ADMIN_USER]);
+  const [users, setUsers] = useState<UserAccount[]>(INITIAL_GUILD_USERS);
   const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
   const [sheetConfig, setSheetConfig] = useState<SheetConfig>(DEFAULT_SHEET_CONFIG);
 
-  // App & Auth States
+  // App & Auth States (Enforce login: null by default if not authenticated in browser)
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     try {
       const saved = localStorage.getItem('boss_timer_current_user');
-      return saved ? JSON.parse(saved) : INITIAL_ADMIN_USER;
+      return saved ? JSON.parse(saved) : null;
     } catch {
-      return INITIAL_ADMIN_USER;
+      return null;
     }
   });
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
@@ -156,11 +172,50 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Realtime SSE / Polling sync
+  // Realtime Sync (Firebase Firestore + SSE Server Hybrid for Vercel & Cloud)
   useEffect(() => {
     let eventSource: EventSource | null = null;
     let reconnectTimeout: NodeJS.Timeout | null = null;
     let isComponentMounted = true;
+
+    // 1. Seed Firestore if database is empty on first boot
+    seedFirestoreIfEmpty(
+      createInitialBosses(),
+      INITIAL_GUILD_USERS,
+      DEFAULT_SETTINGS,
+      DEFAULT_SHEET_CONFIG
+    );
+
+    // 2. Real-time Firestore Listeners (Ensures 100% real-time sync on Vercel without Node server)
+    const unsubBosses = subscribeToFirestoreBosses((fbBosses) => {
+      if (!isComponentMounted) return;
+      if (fbBosses && fbBosses.length > 0) {
+        setBosses(fbBosses);
+        saveLocalCache(fbBosses);
+        setIsOnline(true);
+      }
+    });
+
+    const unsubUsers = subscribeToFirestoreUsers((fbUsers) => {
+      if (!isComponentMounted) return;
+      if (fbUsers && fbUsers.length > 0) {
+        setUsers(fbUsers);
+      }
+    });
+
+    const unsubSettings = subscribeToFirestoreSettings((fbSettings) => {
+      if (!isComponentMounted) return;
+      if (fbSettings) {
+        setSettings(fbSettings);
+      }
+    });
+
+    const unsubSheetConfig = subscribeToFirestoreSheetConfig((fbConfig) => {
+      if (!isComponentMounted) return;
+      if (fbConfig) {
+        setSheetConfig(fbConfig);
+      }
+    });
 
     const fetchServerState = async () => {
       try {
@@ -352,6 +407,10 @@ export default function App() {
 
     return () => {
       isComponentMounted = false;
+      unsubBosses();
+      unsubUsers();
+      unsubSettings();
+      unsubSheetConfig();
       if (eventSource) eventSource.close();
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       clearInterval(pollInterval);
@@ -458,16 +517,19 @@ export default function App() {
     const newFormatted = newSpawnTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
     // Optimistic Update
+    const updatedBossRecord: Boss = {
+      ...targetBoss,
+      lastKilledAt: lastKilledTime,
+      nextSpawnAt: nextSpawnIso,
+      killedBy: killerName,
+      notifiedStages: [],
+    };
+    saveBossToFirestore(updatedBossRecord).catch(() => {});
+
     setBosses((prev) => {
       const next = prev.map((b) => {
         if (b.id !== bossId) return b;
-        return {
-          ...b,
-          lastKilledAt: lastKilledTime,
-          nextSpawnAt: nextSpawnIso,
-          killedBy: killerName,
-          notifiedStages: [],
-        };
+        return updatedBossRecord;
       });
       saveLocalCache(next);
       return next;
@@ -508,11 +570,22 @@ export default function App() {
   };
 
   const handleSaveBoss = async (updated: Partial<Boss> & { id: string }) => {
+    let targetToSave: Boss | undefined;
     setBosses((prev) => {
-      const next = prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b));
+      const next = prev.map((b) => {
+        if (b.id === updated.id) {
+          targetToSave = { ...b, ...updated };
+          return targetToSave;
+        }
+        return b;
+      });
       saveLocalCache(next);
       return next;
     });
+
+    if (targetToSave) {
+      saveBossToFirestore(targetToSave).catch(() => {});
+    }
 
     if (navigator.onLine) {
       try {
@@ -549,6 +622,7 @@ export default function App() {
 
   const handleDeleteBoss = async (bossId: string) => {
     setBosses((prev) => prev.filter((b) => b.id !== bossId));
+    deleteBossFromFirestore(bossId).catch(() => {});
 
     if (navigator.onLine) {
       try {
@@ -567,6 +641,17 @@ export default function App() {
     level?: number;
     notes?: string;
   }) => {
+    const fallbackBoss: Boss = {
+      id: `${data.server}-${Date.now()}`,
+      ...data,
+      serverTag: data.server === 'main' ? (settings.mainServerTag || 'T3') : (settings.subServerTag || 'B9'),
+      lastKilledAt: null,
+      nextSpawnAt: null,
+      notifiedStages: [],
+    };
+
+    saveBossToFirestore(fallbackBoss).catch(() => {});
+
     try {
       const res = await fetch(getApiUrl('/api/bosses'), {
         method: 'POST',
@@ -575,7 +660,10 @@ export default function App() {
       });
       if (res.ok) {
         const resData = await res.json();
-        setBosses((prev) => [resData.boss, ...prev]);
+        if (resData.boss) {
+          saveBossToFirestore(resData.boss).catch(() => {});
+          setBosses((prev) => [resData.boss, ...prev.filter(b => b.id !== fallbackBoss.id)]);
+        }
         addNotification({
           id: `add-boss-${Date.now()}`,
           type: 'success',
@@ -583,18 +671,12 @@ export default function App() {
           message: `เพิ่ม ${data.name} ลงใน ${data.server === 'main' ? 'เซิร์ฟหลัก' : 'เซิร์ฟรอง'} แล้ว`,
           timestamp: Date.now(),
         });
+        return;
       }
     } catch {
-      // Local fallback
-      const fallbackBoss: Boss = {
-        id: `${data.server}-${Date.now()}`,
-        ...data,
-        lastKilledAt: null,
-        nextSpawnAt: null,
-        notifiedStages: [],
-      };
-      setBosses((prev) => [fallbackBoss, ...prev]);
+      // Offline / fallback already saved
     }
+    setBosses((prev) => [fallbackBoss, ...prev]);
   };
 
   const handleTogglePin = (bossId: string) => {
@@ -605,6 +687,7 @@ export default function App() {
 
   const handleSaveSettings = async (newSettings: NotificationSettings, showToast = true) => {
     setSettings(newSettings);
+    saveSettingsToFirestore(newSettings).catch(() => {});
 
     if (newSettings.mainServerTag || newSettings.subServerTag) {
       setBosses((prev) => {
@@ -650,10 +733,12 @@ export default function App() {
       [server === 'main' ? 'mainServerTag' : 'subServerTag']: cleanTag,
     };
     setSettings(updatedSettings);
+    saveSettingsToFirestore(updatedSettings).catch(() => {});
 
     setBosses((prev) => {
       const updated = prev.map((b) => (b.server === server ? { ...b, serverTag: cleanTag } : b));
       saveLocalCache(updated);
+      batchSaveBossesToFirestore(updated).catch(() => {});
       return updated;
     });
 
@@ -715,7 +800,9 @@ export default function App() {
   };
 
   const handleUpdateSheetConfig = async (config: Partial<SheetConfig>) => {
-    setSheetConfig((prev) => ({ ...prev, ...config }));
+    const nextConfig = { ...sheetConfig, ...config };
+    setSheetConfig(nextConfig);
+    saveSheetConfigToFirestore(nextConfig).catch(() => {});
     try {
       await fetch(getApiUrl('/api/sheet-config'), {
         method: 'POST',
@@ -730,6 +817,7 @@ export default function App() {
   const handleImportBosses = async (imported: Boss[]) => {
     setBosses(imported);
     saveLocalCache(imported);
+    batchSaveBossesToFirestore(imported).catch(() => {});
     try {
       await fetch(getApiUrl('/api/bosses/sync-batch'), {
         method: 'POST',
@@ -754,7 +842,7 @@ export default function App() {
       try {
         data = text ? JSON.parse(text) : {};
       } catch {
-        return false;
+        // ignore
       }
       if (res.ok && data.user) {
         setCurrentUser(data.user);
@@ -765,13 +853,41 @@ export default function App() {
         }
         return true;
       }
-      return false;
-    } catch {
-      return false;
+    } catch (e) {
+      console.warn('Backend login attempt failed, trying local fallback:', e);
     }
+
+    // Local / Offline fallback verification
+    const found = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+    if (found && found.active) {
+      const valid = found.passwordHash
+        ? found.passwordHash === pass
+        : pass === '123456' || (found.username === 'admin' && pass === 'admin123');
+      if (valid) {
+        setCurrentUser(found);
+        try {
+          localStorage.setItem('boss_timer_current_user', JSON.stringify(found));
+        } catch {
+          // ignore
+        }
+        return true;
+      }
+    }
+    return false;
   };
 
   const handleRegisterUser = async (data: { username: string; displayName: string; password?: string }): Promise<boolean> => {
+    const newUser: UserAccount = {
+      id: `user-${Date.now()}`,
+      username: data.username,
+      displayName: data.displayName,
+      role: 'member',
+      passwordHash: data.password || '123456',
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    saveUserToFirestore(newUser).catch(() => {});
+
     try {
       const res = await fetch(getApiUrl('/api/users/create'), {
         method: 'POST',
@@ -787,6 +903,7 @@ export default function App() {
       }
       if (res.ok && resData.user) {
         setCurrentUser(resData.user);
+        saveUserToFirestore(resData.user).catch(() => {});
         try {
           localStorage.setItem('boss_timer_current_user', JSON.stringify(resData.user));
         } catch {
@@ -794,34 +911,61 @@ export default function App() {
         }
         return true;
       }
-      return false;
     } catch {
-      return false;
+      // Offline fallback: registered locally
+      setCurrentUser(newUser);
+      setUsers((prev) => [...prev, newUser]);
+      try {
+        localStorage.setItem('boss_timer_current_user', JSON.stringify(newUser));
+      } catch {
+        // ignore
+      }
+      return true;
     }
+    return false;
   };
 
   const handleCreateUserByAdmin = async (data: { username: string; displayName: string; role: 'admin' | 'member'; password?: string }) => {
-    const res = await fetch(getApiUrl('/api/users/create'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    const text = await res.text();
-    let resData: any = {};
+    const localUser: UserAccount = {
+      id: `user-${Date.now()}`,
+      username: data.username,
+      displayName: data.displayName,
+      role: data.role,
+      passwordHash: data.password || '123456',
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    saveUserToFirestore(localUser).catch(() => {});
+    setUsers((prev) => [...prev, localUser]);
+
     try {
-      resData = text ? JSON.parse(text) : {};
+      const res = await fetch(getApiUrl('/api/users/create'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const text = await res.text();
+      let resData: any = {};
+      try {
+        resData = text ? JSON.parse(text) : {};
+      } catch {
+        // ignore
+      }
+      if (resData.user) {
+        saveUserToFirestore(resData.user).catch(() => {});
+        setUsers((prev) => [...prev.filter(u => u.id !== resData.user.id && u.id !== localUser.id), resData.user]);
+      }
     } catch {
-      throw new Error('เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง');
-    }
-    if (!res.ok) {
-      throw new Error(resData.error || 'เกิดข้อผิดพลาดในการสร้าง ID ผู้ใช้');
-    }
-    if (resData.user) {
-      setUsers((prev) => [...prev.filter(u => u.id !== resData.user.id), resData.user]);
+      // Handled via local / firestore
     }
   };
 
   const handleUpdateUserByAdmin = async (userId: string, data: Partial<UserAccount>) => {
+    const existing = users.find(u => u.id === userId);
+    if (existing) {
+      saveUserToFirestore({ ...existing, ...data }).catch(() => {});
+    }
+
     try {
       await fetch(getApiUrl('/api/users/update'), {
         method: 'POST',
@@ -835,6 +979,7 @@ export default function App() {
   };
 
   const handleDeleteUserByAdmin = async (userId: string) => {
+    deleteUserFromFirestore(userId).catch(() => {});
     try {
       await fetch(getApiUrl(`/api/users/${userId}`), { method: 'DELETE' });
     } catch (e) {
@@ -928,6 +1073,17 @@ export default function App() {
   const mainCount = useMemo(() => bosses.filter((b) => b.server === 'main').length, [bosses]);
   const subCount = useMemo(() => bosses.filter((b) => b.server === 'sub').length, [bosses]);
   const allCount = bosses.length;
+
+  // Enforce Login: If not logged in, show Guild Login Screen
+  if (!currentUser) {
+    return (
+      <GuildLoginScreen
+        users={users}
+        onLogin={handleLoginGuildUser}
+        onRegister={handleRegisterUser}
+      />
+    );
+  }
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-900 text-slate-100'}`}>
@@ -1138,6 +1294,7 @@ export default function App() {
           onRebootComplete={(updatedBosses) => {
             setBosses(updatedBosses);
             saveLocalCache(updatedBosses);
+            batchSaveBossesToFirestore(updatedBosses).catch(() => {});
             addNotification({
               id: `reboot-done-${Date.now()}`,
               type: 'success',
@@ -1162,6 +1319,7 @@ export default function App() {
           onResetComplete={(updatedBosses) => {
             setBosses(updatedBosses);
             saveLocalCache(updatedBosses);
+            batchSaveBossesToFirestore(updatedBosses).catch(() => {});
             addNotification({
               id: `reset-all-done-${Date.now()}`,
               type: 'success',

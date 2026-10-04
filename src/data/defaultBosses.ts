@@ -29,6 +29,7 @@ export const INITIAL_ADMIN_USER: UserAccount = {
   username: 'admin',
   displayName: 'หัวหน้ากิลด์ (Admin)',
   role: 'admin',
+  passwordHash: 'admin123',
   createdAt: new Date().toISOString(),
   active: true,
 };
@@ -38,9 +39,33 @@ export const INITIAL_GUEST_USER: UserAccount = {
   username: 'guest',
   displayName: 'สมาชิกกิลด์',
   role: 'member',
+  passwordHash: '123456',
   createdAt: new Date().toISOString(),
   active: true,
 };
+
+export const INITIAL_GUILD_USERS: UserAccount[] = [
+  INITIAL_ADMIN_USER,
+  INITIAL_GUEST_USER,
+  {
+    id: 'user-1790675174904',
+    username: 'test99',
+    displayName: 'test99',
+    role: 'member',
+    passwordHash: '123456',
+    createdAt: new Date().toISOString(),
+    active: true,
+  },
+  {
+    id: 'user-1790675292767',
+    username: 'pae123',
+    displayName: 'pae123',
+    role: 'member',
+    passwordHash: '123456',
+    createdAt: new Date().toISOString(),
+    active: true,
+  },
+];
 
 export const rawBossList = [
   { num: 3, name: 'คอร์ซัสเซปเตอร์ - Core', location: 'หอคอยครูม่า ชั้น 7', respawn: 600, level: 55, drops: ['แหวนคอร์', 'แกนวิญญาณ'], pinned: true },

@@ -1,0 +1,210 @@
+{
+  "entities": {
+    "boss": {
+      "title": "Boss",
+      "description": "Boss timer record for Lineage 2M guild",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the boss"
+        },
+        "bossNumber": {
+          "type": "number",
+          "description": "Sequential boss number in the guild sheet"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Boss display name"
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Spawn zone or map area"
+        },
+        "respawnMinutes": {
+          "type": "number",
+          "description": "Respawn interval in minutes"
+        },
+        "lastKilledAt": {
+          "type": "string",
+          "description": "ISO timestamp of when the boss was killed or spawned"
+        },
+        "nextSpawnAt": {
+          "type": "string",
+          "description": "Calculated next spawn ISO timestamp"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["alive", "spawned", "killed", "dead", "spawning_soon", "unknown"],
+          "description": "Current status of the boss"
+        },
+        "server": {
+          "type": "string",
+          "enum": ["main", "sub"],
+          "description": "Server type (main or sub)"
+        },
+        "serverTag": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "Server tag e.g. T3, B9, B2"
+        },
+        "updatedBy": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Username of member who last updated this boss"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        },
+        "pinned": {
+          "type": "boolean",
+          "description": "Whether the boss is pinned at the top"
+        },
+        "level": {
+          "type": "number",
+          "description": "Level of the boss"
+        }
+      },
+      "required": ["id", "name", "server", "respawnMinutes"]
+    },
+    "user": {
+      "title": "User",
+      "description": "Guild member account",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "User identifier"
+        },
+        "username": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Unique username for guild login"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Character or nickname in game"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "member"],
+          "description": "User role in guild"
+        },
+        "passwordHash": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Password or hashed credential"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether the account is enabled"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Account creation timestamp"
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "description": "Timestamp of last login"
+        }
+      },
+      "required": ["id", "username", "displayName", "role", "active"]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Guild alert and notification settings",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Master audio notifications toggle"
+        },
+        "soundType": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Selected sound alert type"
+        },
+        "soundVolume": {
+          "type": "number",
+          "description": "Volume level (0 to 1)"
+        },
+        "discordWebhookUrl": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Discord webhook URL"
+        },
+        "discordEnabled": {
+          "type": "boolean",
+          "description": "Enable Discord webhook alerts"
+        },
+        "lineWebhookUrl": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "LINE webhook URL"
+        },
+        "lineEnabled": {
+          "type": "boolean",
+          "description": "Enable LINE alerts"
+        },
+        "mainServerTag": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "Main server tag name (e.g. T3)"
+        },
+        "subServerTag": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "Sub server tag name (e.g. B9)"
+        }
+      }
+    },
+    "sheetConfig": {
+      "title": "SheetConfig",
+      "description": "Google Sheet configuration",
+      "type": "object",
+      "properties": {
+        "sheetId": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Google Spreadsheet ID"
+        },
+        "mainGid": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "GID for Main server tab"
+        },
+        "subGid": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "GID for Sub server tab"
+        },
+        "lastSyncedAt": {
+          "type": "string",
+          "description": "Last synced timestamp"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/bosses/{bossId}": {
+      "schema": "boss",
+      "description": "Collection of all guild boss timers"
+    },
+    "/users/{userId}": {
+      "schema": "user",
+      "description": "Collection of guild user accounts"
+    },
+    "/settings/{settingsId}": {
+      "schema": "settings",
+      "description": "Collection storing global guild alert settings"
+    },
+    "/sheetConfig/{configId}": {
+      "schema": "sheetConfig",
+      "description": "Collection storing Google Sheets configuration"
+    }
+  }
+}
