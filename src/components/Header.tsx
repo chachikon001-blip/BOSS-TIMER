@@ -108,15 +108,17 @@ export const Header: React.FC<HeaderProps> = ({
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
                 <span className="font-mono-num font-medium text-slate-300">{currentTime} (ICT)</span>
                 <span className="text-slate-600">•</span>
-                <span className={`inline-flex items-center gap-1 text-[11px] ${isOnline ? 'text-emerald-400' : 'text-amber-400'}`}>
+                <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${isOnline ? 'text-emerald-400' : 'text-amber-400'}`}>
                   {isOnline ? (
                     <>
-                      <Wifi className="w-3 h-3" />
-                      <span className="hidden md:inline">เชื่อมต่อเรียลไทม์</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" />
+                      <Wifi className="w-3 h-3 text-emerald-400" />
+                      <span>ออนไลน์ (ซิงค์คลาวด์)</span>
                     </>
                   ) : (
                     <>
-                      <WifiOff className="w-3 h-3" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      <WifiOff className="w-3 h-3 text-amber-400" />
                       <span>โหมดออฟไลน์</span>
                     </>
                   )}

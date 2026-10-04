@@ -218,6 +218,18 @@ export default function App() {
     });
 
     const fetchServerState = async () => {
+      // If deployed on Vercel or external host, Express backend is not local.
+      // Firestore onSnapshot handles 100% of live sync!
+      if (typeof window !== 'undefined') {
+        const host = window.location.hostname;
+        if (host.includes('vercel.app') || host.includes('github.io') || host.includes('netlify.app')) {
+          if (typeof navigator !== 'undefined' && navigator.onLine) {
+            setIsOnline(true);
+          }
+          return;
+        }
+      }
+
       try {
         const res = await fetch(getApiUrl('/api/state'));
         if (res.ok) {
@@ -231,14 +243,29 @@ export default function App() {
             saveLocalCache(data.bosses);
             setIsOnline(true);
           }
+        } else if (typeof navigator !== 'undefined' && navigator.onLine) {
+          setIsOnline(true);
         }
       } catch {
-        setIsOnline(false);
+        // Only mark offline if browser genuinely has no network
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          setIsOnline(false);
+        } else {
+          // If internet is active, Firebase Firestore provides live cloud sync
+          setIsOnline(true);
+        }
       }
     };
 
     const connectSSE = () => {
       if (!isComponentMounted) return;
+      if (typeof window !== 'undefined') {
+        const host = window.location.hostname;
+        if (host.includes('vercel.app') || host.includes('github.io') || host.includes('netlify.app')) {
+          // On Vercel, Firebase Firestore handles real-time live sync directly
+          return;
+        }
+      }
       try {
         if (eventSource) {
           eventSource.close();
@@ -1138,7 +1165,7 @@ export default function App() {
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5">
         {/* Offline Warning Banner if disconnected */}
-        {!isOnline && (
+        {(!isOnline && typeof navigator !== 'undefined' && !navigator.onLine) && (
           <div className="mb-4 p-3 rounded-xl bg-amber-950/80 border border-amber-500/50 flex items-center justify-between text-xs text-amber-200">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
