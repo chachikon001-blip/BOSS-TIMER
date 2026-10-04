@@ -830,7 +830,7 @@ export default function App() {
   };
 
   // User Accounts
-  const handleLoginGuildUser = async (username: string, pass: string): Promise<boolean> => {
+  const handleLoginGuildUser = async (username: string, pass: string): Promise<{ success: boolean; error?: string } | boolean> => {
     try {
       const res = await fetch(getApiUrl('/api/users/login'), {
         method: 'POST',
@@ -851,81 +851,93 @@ export default function App() {
         } catch {
           // ignore
         }
-        return true;
+        return { success: true };
+      }
+      if (data.isPending || res.status === 403) {
+        return { 
+          success: false, 
+          error: data.error || '⏳ บัญชีของคุณอยู่ระหว่างรอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งาน' 
+        };
       }
     } catch (e) {
       console.warn('Backend login attempt failed, trying local fallback:', e);
     }
 
-    // Local / Offline fallback verification
+    // Local / Firestore fallback verification
     const found = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
-    if (found && found.active) {
-      const valid = found.passwordHash
-        ? found.passwordHash === pass
-        : pass === '123456' || (found.username === 'admin' && pass === 'admin123');
-      if (valid) {
-        setCurrentUser(found);
-        try {
-          localStorage.setItem('boss_timer_current_user', JSON.stringify(found));
-        } catch {
-          // ignore
-        }
-        return true;
-      }
+    if (!found) {
+      return { success: false, error: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' };
     }
-    return false;
+
+    const valid = found.passwordHash
+      ? found.passwordHash === pass
+      : pass === '123456' || (found.username === 'admin' && pass === 'admin123');
+
+    if (!valid) {
+      return { success: false, error: 'รหัสผ่านไม่ถูกต้อง' };
+    }
+
+    if (found.status === 'pending' || (!found.active && found.status !== 'rejected' && found.id !== 'admin-master')) {
+      return { 
+        success: false, 
+        error: '⏳ บัญชีของคุณอยู่ระหว่างรอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งาน กรุณาแจ้ง Admin' 
+      };
+    }
+
+    if (found.status === 'rejected' || (!found.active && found.id !== 'admin-master')) {
+      return { 
+        success: false, 
+        error: '❌ บัญชีนี้ถูกระงับหรือไม่ได้รับอนุมัติจาก Admin กรุณาติดต่อหัวหน้ากิลด์' 
+      };
+    }
+
+    setCurrentUser(found);
+    try {
+      localStorage.setItem('boss_timer_current_user', JSON.stringify(found));
+    } catch {
+      // ignore
+    }
+    return { success: true };
   };
 
-  const handleRegisterUser = async (data: { username: string; displayName: string; password?: string }): Promise<boolean> => {
+  const handleRegisterUser = async (data: { username: string; displayName: string; password?: string }): Promise<{ success: boolean; message?: string; isPending?: boolean } | boolean> => {
+    // Prevent duplicate usernames
+    const exists = users.some(u => u.username.toLowerCase() === data.username.trim().toLowerCase());
+    if (exists) {
+      return { success: false, message: 'ชื่อผู้ใช้นี้มีในระบบแล้ว กรุณาเลือกชื่ออื่น' };
+    }
+
     const newUser: UserAccount = {
       id: `user-${Date.now()}`,
-      username: data.username,
-      displayName: data.displayName,
+      username: data.username.trim(),
+      displayName: data.displayName.trim(),
       role: 'member',
       passwordHash: data.password || '123456',
-      active: true,
+      active: false,
+      status: 'pending',
       createdAt: new Date().toISOString(),
     };
+
+    // Save to Firestore in real-time so Admin sees it immediately!
     saveUserToFirestore(newUser).catch(() => {});
+    setUsers((prev) => [...prev.filter(u => u.username.toLowerCase() !== newUser.username.toLowerCase()), newUser]);
 
     try {
-      const res = await fetch(getApiUrl('/api/users/create'), {
+      await fetch(getApiUrl('/api/users/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, role: 'member' }),
+        body: JSON.stringify({ ...data, role: 'member', createdByAdmin: false }),
       });
-      const text = await res.text();
-      let resData: any = {};
-      try {
-        resData = text ? JSON.parse(text) : {};
-      } catch {
-        return false;
-      }
-      if (res.ok && resData.user) {
-        setCurrentUser(resData.user);
-        saveUserToFirestore(resData.user).catch(() => {});
-        try {
-          localStorage.setItem('boss_timer_current_user', JSON.stringify(resData.user));
-        } catch {
-          // ignore
-        }
-        return true;
-      }
-    } catch {
-      // Offline fallback: registered locally
-      setCurrentUser(newUser);
-      setUsers((prev) => [...prev, newUser]);
-      try {
-        localStorage.setItem('boss_timer_current_user', JSON.stringify(newUser));
-      } catch {
-        // ignore
-      }
-      return true;
-    }
-    return false;
+    } catch {}
+
+    return { 
+      success: true, 
+      isPending: true,
+      message: 'ส่งคำขอลงทะเบียนสำเร็จ! กรุณารอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งานก่อนเข้าสู่ระบบ' 
+    };
   };
 
-  const handleCreateUserByAdmin = async (data: { username: string; displayName: string; role: 'admin' | 'member'; password?: string }) => {
+  const handleCreateUserByAdmin = async (data: { username: string; displayName: string; role: 'admin' | 'member'; password?: string; createdByAdmin?: boolean }) => {
     const localUser: UserAccount = {
       id: `user-${Date.now()}`,
       username: data.username,
@@ -933,16 +945,17 @@ export default function App() {
       role: data.role,
       passwordHash: data.password || '123456',
       active: true,
+      status: 'active',
       createdAt: new Date().toISOString(),
     };
     saveUserToFirestore(localUser).catch(() => {});
-    setUsers((prev) => [...prev, localUser]);
+    setUsers((prev) => [...prev.filter(u => u.id !== localUser.id), localUser]);
 
     try {
       const res = await fetch(getApiUrl('/api/users/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, createdByAdmin: true }),
       });
       const text = await res.text();
       let resData: any = {};
@@ -1085,6 +1098,8 @@ export default function App() {
     );
   }
 
+  const pendingApprovalCount = users.filter(u => u.status === 'pending' || (!u.active && u.status !== 'rejected' && u.id !== 'admin-master')).length;
+
   return (
     <div className={`min-h-screen ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-900 text-slate-100'}`}>
       {/* Header */}
@@ -1102,6 +1117,7 @@ export default function App() {
         onOpenAddBoss={() => setIsAddModalOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={handleLogout}
+        pendingApprovalCount={pendingApprovalCount}
         onTestSound={() =>
           playBossAlert(
             settings.soundType,

@@ -6,8 +6,8 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: UserAccount | null;
-  onLoginGuildUser: (username: string, pass: string) => Promise<boolean>;
-  onRegister: (data: { username: string; displayName: string; password?: string }) => Promise<boolean>;
+  onLoginGuildUser: (username: string, pass: string) => Promise<{ success: boolean; error?: string } | boolean>;
+  onRegister: (data: { username: string; displayName: string; password?: string }) => Promise<{ success: boolean; message?: string; isPending?: boolean } | boolean>;
   onLogout: () => void;
 }
 
@@ -24,18 +24,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleGuildLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setSuccessMsg('');
     setLoading(true);
     try {
-      const ok = await onLoginGuildUser(username, password);
-      if (ok) {
+      const res = await onLoginGuildUser(username, password);
+      if (typeof res === 'object') {
+        if (res.success) {
+          onClose();
+        } else {
+          setErrorMsg(res.error || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+        }
+      } else if (res) {
         onClose();
       } else {
-        setErrorMsg('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+        setErrorMsg('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง หรือบัญชียังไม่ได้รับการอนุมัติ');
       }
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'เข้าสู่ระบบล้มเหลว');
@@ -47,11 +55,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setSuccessMsg('');
     setLoading(true);
     try {
-      const ok = await onRegister({ username, displayName, password });
-      if (ok) {
-        onClose();
+      const res = await onRegister({ username, displayName, password });
+      if (typeof res === 'object') {
+        if (res.success) {
+          setSuccessMsg(res.message || 'ส่งคำขอลงทะเบียนเรียบร้อยแล้ว กรุณารอหัวหน้ากิลด์ (Admin) อนุมัติ');
+          setMode('login');
+        } else {
+          setErrorMsg(res.message || 'ไม่สามารถลงทะเบียนได้');
+        }
+      } else if (res) {
+        setSuccessMsg('ส่งคำขอลงทะเบียนเรียบร้อยแล้ว กรุณารอหัวหน้ากิลด์ (Admin) อนุมัติ');
+        setMode('login');
       } else {
         setErrorMsg('ไม่สามารถลงทะเบียนได้');
       }

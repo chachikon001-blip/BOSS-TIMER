@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserAccount, Boss, AppStateData } from '../types/boss';
+import { UserAccount, AppStateData } from '../types/boss';
 import { 
   X, 
   ShieldCheck, 
@@ -10,14 +10,18 @@ import {
   DownloadCloud, 
   UploadCloud, 
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle,
+  UserCheck,
+  UserX,
+  Clock,
+  ShieldAlert
 } from 'lucide-react';
 
 interface AdminModalProps {
   isOpen: boolean;
   onClose: () => void;
   users: UserAccount[];
-  onCreateUser: (data: { username: string; displayName: string; role: 'admin' | 'member'; password?: string }) => Promise<void>;
+  onCreateUser: (data: { username: string; displayName: string; role: 'admin' | 'member'; password?: string; createdByAdmin?: boolean }) => Promise<void>;
   onUpdateUser: (userId: string, data: Partial<UserAccount>) => Promise<void>;
   onDeleteUser: (userId: string) => Promise<void>;
   onRestoreBackup: (data: Partial<AppStateData>) => Promise<void>;
@@ -32,7 +36,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   onDeleteUser,
   onRestoreBackup,
 }) => {
-  const [activeTab, setActiveTab] = useState<'users' | 'create' | 'backup'>('users');
+  const pendingUsers = users.filter(u => u.status === 'pending' || (!u.active && u.status !== 'rejected' && u.id !== 'admin-master'));
+  
+  // Default to pending tab if there are pending registrations
+  const [activeTab, setActiveTab] = useState<'pending' | 'users' | 'create' | 'backup'>(() => {
+    return pendingUsers.length > 0 ? 'pending' : 'users';
+  });
+
   const [editingPasswordUserId, setEditingPasswordUserId] = useState<string | null>(null);
   const [newMemberPassword, setNewMemberPassword] = useState('');
 
@@ -42,6 +52,25 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const [password, setPassword] = useState('123456');
   const [role, setRole] = useState<'admin' | 'member'>('member');
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleApproveUser = async (userId: string, userName: string) => {
+    try {
+      await onUpdateUser(userId, { active: true, status: 'active' });
+      setStatusMsg({ type: 'success', text: `อนุมัติบัญชี "${userName}" เรียบร้อยแล้ว! สมาชิกสามารถเข้าสู่ระบบได้ทันที` });
+    } catch {
+      setStatusMsg({ type: 'error', text: `ไม่สามารถอนุมัติบัญชี "${userName}" ได้` });
+    }
+  };
+
+  const handleRejectUser = async (userId: string, userName: string) => {
+    if (!confirm(`ต้องการปฏิเสธ/ลบคำขอของ "${userName}" หรือไม่?`)) return;
+    try {
+      await onDeleteUser(userId);
+      setStatusMsg({ type: 'success', text: `ปฏิเสธคำขอของ "${userName}" แล้ว` });
+    } catch {
+      setStatusMsg({ type: 'error', text: `ลบคำขอของ "${userName}" ไม่สำเร็จ` });
+    }
+  };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +82,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
         displayName: displayName.trim(),
         role,
         password,
+        createdByAdmin: true,
       });
       setStatusMsg({ type: 'success', text: `สร้างบัญชี "${username}" สำเร็จเรียบร้อยแล้ว!` });
       setUsername('');
@@ -104,7 +134,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-100">ระบบจัดการผู้ใช้และข้อมูล (Admin Console)</h2>
-              <p className="text-xs text-slate-400">จัดการยศแอดมิน/สมาชิก และสำรองข้อมูลบนคลาวด์</p>
+              <p className="text-xs text-slate-400">อนุมัติสมาชิกใหม่, กำหนดยศแอดมิน, และสำรองข้อมูลกิลด์</p>
             </div>
           </div>
           <button
@@ -116,34 +146,52 @@ export const AdminModal: React.FC<AdminModalProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex border-b border-slate-800 bg-slate-950 px-4">
+        <div className="flex border-b border-slate-800 bg-slate-950 px-4 overflow-x-auto">
+          {/* Pending Tab */}
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-1.5 whitespace-nowrap transition relative ${
+              activeTab === 'pending'
+                ? 'border-amber-500 text-amber-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>รออนุมัติการสมัคร</span>
+            {pendingUsers.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-rose-500 text-white rounded-full">
+                {pendingUsers.length}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => setActiveTab('users')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
               activeTab === 'users'
                 ? 'border-indigo-500 text-indigo-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>รายชื่อสมาชิกในระบบ ({users.length})</span>
+            <span>สมาชิกทั้งหมด ({users.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('create')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
               activeTab === 'create'
                 ? 'border-indigo-500 text-indigo-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>สร้าง ID ผู้ใช้ใหม่</span>
+            <span>สร้าง ID ผู้ใช้โดยตรง</span>
           </button>
 
           <button
             onClick={() => setActiveTab('backup')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
               activeTab === 'backup'
                 ? 'border-indigo-500 text-indigo-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -162,252 +210,314 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                 ? 'bg-emerald-950/60 border border-emerald-500/30 text-emerald-300'
                 : 'bg-rose-950/60 border border-rose-500/30 text-rose-300'
             }`}>
-              {statusMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+              {statusMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
               <span>{statusMsg.text}</span>
             </div>
           )}
 
+          {/* Pending Approval Tab */}
+          {activeTab === 'pending' && (
+            <div className="space-y-3">
+              <div className="p-3 bg-amber-950/30 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-start gap-2.5">
+                <ShieldAlert className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold">ระบบคัดกรองสมาชิกกิลด์ (Admin Approval)</p>
+                  <p className="text-amber-400/80 text-[11px] mt-0.5">
+                    ผู้ใช้ที่กดสมัครทางหน้าเว็บจะต้องได้รับการกด "อนุมัติ" จาก Admin ก่อน จึงจะสามารถล็อกอินเข้าดูเวลาบอสได้
+                  </p>
+                </div>
+              </div>
+
+              {pendingUsers.length === 0 ? (
+                <div className="p-8 text-center border border-dashed border-slate-800 rounded-xl">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-80" />
+                  <p className="text-sm font-semibold text-slate-200">ไม่มีคำขอรออนุมัติ</p>
+                  <p className="text-xs text-slate-400 mt-1">สมาชิกทุกคนได้รับการอนุมัติเรียบร้อยแล้ว หรือยังไม่มีผู้สมัครใหม่</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {pendingUsers.map((u) => (
+                    <div 
+                      key={u.id}
+                      className="p-3.5 rounded-xl bg-slate-950/80 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition hover:border-amber-500/50"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-200 text-sm">{u.displayName}</span>
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            รออนุมัติ
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-mono">
+                          <span>User: <strong className="text-indigo-300">{u.username}</strong></span>
+                          <span>•</span>
+                          <span>สมัครเมื่อ: {u.createdAt ? new Date(u.createdAt).toLocaleDateString('th-TH') : 'ไม่ระบุ'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center">
+                        <button
+                          onClick={() => handleApproveUser(u.id, u.displayName || u.username)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-sm active:scale-95"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>อนุมัติให้เข้ากิลด์</span>
+                        </button>
+                        <button
+                          onClick={() => handleRejectUser(u.id, u.displayName || u.username)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900/90 text-rose-300 border border-rose-500/30 text-xs font-medium transition active:scale-95"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                          <span>ปฏิเสธ</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* All Users Tab */}
           {activeTab === 'users' && (
             <div className="space-y-3">
               <div className="overflow-x-auto rounded-xl border border-slate-800">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase font-bold">
                     <tr>
-                      <th className="p-3">ผู้ใช้งาน</th>
+                      <th className="p-3">ชื่อตัวละคร (Display)</th>
                       <th className="p-3">Username</th>
                       <th className="p-3">ยศ / สิทธิ์</th>
-                      <th className="p-3">สถานะ</th>
+                      <th className="p-3">สถานะบัญชี</th>
                       <th className="p-3 text-right">การจัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {users.map((u) => (
-                      <React.Fragment key={u.id}>
-                        <tr className="hover:bg-slate-800/40 transition">
-                          <td className="p-3 font-semibold text-slate-200">
-                            {u.displayName}
-                          </td>
-                          <td className="p-3 font-mono text-slate-400">{u.username}</td>
-                          <td className="p-3">
-                            <select
-                              value={u.role}
-                              disabled={u.id === 'admin-master'}
-                              onChange={(e) => onUpdateUser(u.id, { role: e.target.value as 'admin' | 'member' })}
-                              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
-                            >
-                              <option value="admin">แอดมิน (Admin)</option>
-                              <option value="member">สมาชิกทั่วไป (Member)</option>
-                            </select>
-                          </td>
-                          <td className="p-3">
-                            <button
-                              onClick={() => onUpdateUser(u.id, { active: !u.active })}
-                              disabled={u.id === 'admin-master'}
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                u.active
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                              }`}
-                            >
-                              {u.active ? 'เปิดใช้งาน' : 'ระงับชั่วคราว'}
-                            </button>
-                          </td>
-                          <td className="p-3 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => {
-                                  setEditingPasswordUserId(editingPasswordUserId === u.id ? null : u.id);
-                                  setNewMemberPassword('');
-                                }}
-                                className="p-1 text-amber-400 hover:text-amber-300 hover:bg-amber-950/40 rounded transition"
-                                title="ตั้งรหัสผ่านใหม่"
+                    {users.map((u) => {
+                      const isPending = u.status === 'pending' || (!u.active && u.status !== 'rejected' && u.id !== 'admin-master');
+                      return (
+                        <React.Fragment key={u.id}>
+                          <tr className="hover:bg-slate-800/40 transition">
+                            <td className="p-3 font-semibold text-slate-200">
+                              {u.displayName}
+                            </td>
+                            <td className="p-3 font-mono text-slate-400">{u.username}</td>
+                            <td className="p-3">
+                              <select
+                                value={u.role}
+                                disabled={u.id === 'admin-master'}
+                                onChange={(e) => onUpdateUser(u.id, { role: e.target.value as 'admin' | 'member' })}
+                                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
                               >
-                                <Key className="w-3.5 h-3.5" />
-                              </button>
-                              {u.id !== 'admin-master' && (
+                                <option value="admin">แอดมิน (Admin)</option>
+                                <option value="member">สมาชิกทั่วไป (Member)</option>
+                              </select>
+                            </td>
+                            <td className="p-3">
+                              {isPending ? (
                                 <button
-                                  onClick={() => {
-                                    if (window.confirm(`ลบผู้ใช้ ${u.username}?`)) {
-                                      onDeleteUser(u.id);
-                                    }
-                                  }}
-                                  className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded transition"
-                                  title="ลบผู้ใช้"
+                                  onClick={() => handleApproveUser(u.id, u.displayName || u.username)}
+                                  className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition flex items-center gap-1"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>รออนุมัติ (คลิกเพื่ออนุมัติ)</span>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => onUpdateUser(u.id, { active: !u.active, status: !u.active ? 'active' : 'rejected' })}
+                                  disabled={u.id === 'admin-master'}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    u.active
+                                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                  }`}
+                                >
+                                  {u.active ? 'เปิดใช้งาน' : 'ระงับชั่วคราว'}
                                 </button>
                               )}
-                            </div>
-                          </td>
-                        </tr>
-                        {editingPasswordUserId === u.id && (
-                          <tr key={`edit-pass-${u.id}`} className="bg-amber-950/30 border-b border-amber-900/30">
-                            <td colSpan={5} className="p-3">
-                              <form
-                                onSubmit={async (e) => {
-                                  e.preventDefault();
-                                  if (!newMemberPassword.trim()) return;
-                                  try {
-                                    await onUpdateUser(u.id, { password: newMemberPassword.trim() });
-                                    setStatusMsg({ type: 'success', text: `เปลี่ยนรหัสผ่านของ ${u.username} เป็น "${newMemberPassword.trim()}" สำเร็จแล้ว!` });
-                                    setEditingPasswordUserId(null);
+                            </td>
+                            <td className="p-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    setEditingPasswordUserId(editingPasswordUserId === u.id ? null : u.id);
                                     setNewMemberPassword('');
-                                  } catch {
-                                    setStatusMsg({ type: 'error', text: 'เปลี่ยนรหัสผ่านไม่สำเร็จ' });
-                                  }
-                                }}
-                                className="flex items-center gap-2 flex-wrap"
-                              >
-                                <span className="text-xs text-amber-300 font-semibold">เปลี่ยนรหัสผ่านใหม่ให้ {u.username}:</span>
-                                <input
-                                  type="text"
-                                  required
-                                  value={newMemberPassword}
-                                  onChange={(e) => setNewMemberPassword(e.target.value)}
-                                  placeholder="พิมพ์รหัสผ่านใหม่ เช่น 123456"
-                                  className="px-2.5 py-1 bg-slate-900 border border-amber-500/50 rounded text-xs text-white focus:outline-none"
-                                />
-                                <button
-                                  type="submit"
-                                  className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-bold transition shadow"
+                                  }}
+                                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+                                  title="เปลี่ยนรหัสผ่าน"
                                 >
-                                  บันทึกรหัสใหม่
+                                  <Key className="w-3.5 h-3.5" />
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingPasswordUserId(null)}
-                                  className="px-2.5 py-1 text-slate-400 hover:text-slate-200 text-xs"
-                                >
-                                  ยกเลิก
-                                </button>
-                              </form>
+                                {u.id !== 'admin-master' && (
+                                  <button
+                                    onClick={() => {
+                                      if (confirm(`คุณต้องการลบผู้ใช้ "${u.username}" หรือไม่?`)) {
+                                        onDeleteUser(u.id);
+                                      }
+                                    }}
+                                    className="p-1 rounded bg-rose-950/60 hover:bg-rose-900 text-rose-400 border border-rose-500/20"
+                                    title="ลบผู้ใช้"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
-                        )}
-                      </React.Fragment>
-                    ))}
+
+                          {/* Quick Password Change Form */}
+                          {editingPasswordUserId === u.id && (
+                            <tr className="bg-slate-950">
+                              <td colSpan={5} className="p-3 border-t border-slate-800">
+                                <div className="flex items-center gap-2 max-w-sm">
+                                  <input
+                                    type="text"
+                                    placeholder="รหัสผ่านใหม่ (อย่างน้อย 4 ตัว)"
+                                    value={newMemberPassword}
+                                    onChange={(e) => setNewMemberPassword(e.target.value)}
+                                    className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-slate-100 flex-1 focus:outline-none"
+                                  />
+                                  <button
+                                    onClick={async () => {
+                                      if (!newMemberPassword.trim()) return;
+                                      await onUpdateUser(u.id, { passwordHash: newMemberPassword.trim() });
+                                      setEditingPasswordUserId(null);
+                                      setStatusMsg({ type: 'success', text: `เปลี่ยนรหัสผ่านของ ${u.username} สำเร็จ` });
+                                    }}
+                                    className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+                                  >
+                                    บันทึก
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingPasswordUserId(null)}
+                                    className="px-2 py-1 rounded bg-slate-800 text-slate-400 text-xs"
+                                  >
+                                    ยกเลิก
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
+          {/* Create User Tab */}
           {activeTab === 'create' && (
-            <form onSubmit={handleCreateSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Username (ใช้สำหรับเข้าสู่ระบบ) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="เช่น member01 หรือ hunter"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    ชื่อแสดงในเกม / กิลด์ *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="เช่น ดาบพิฆาต (สายเวท)"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
+            <form onSubmit={handleCreateSubmit} className="space-y-4 max-w-md mx-auto">
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs text-slate-400">
+                สร้างบัญชีสมาชิกให้ลูกกิลด์โดยตรง เมื่อสร้างเสร็จสมาชิกจะสามารถเข้าสู่ระบบได้ทันทีโดยไม่ต้องรออนุมัติ
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    รหัสผ่านเริ่มต้น
-                  </label>
-                  <input
-                    type="text"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-100 font-mono focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    ยศและสิทธิ์
-                  </label>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="member">สมาชิกทั่วไป (บันทึกเวลาบอสได้)</option>
-                    <option value="admin">แอดมิน (สร้าง ID, ลบบอส, จัดการระบบได้)</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Username (สำหรับล็อกอิน)
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="เช่น pae123, hunter01"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                />
               </div>
 
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition flex items-center justify-center gap-1.5"
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  ชื่อตัวละครในเกม (Display Name)
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="เช่น เป้ จอมพลัง, นายหัวแคลน"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  รหัสผ่านเริ่มต้น
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  สิทธิ์การใช้งาน
+                </label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
                 >
-                  <UserPlus className="w-4 h-4" />
-                  <span>บันทึกและสร้าง ID ผู้ใช้</span>
-                </button>
+                  <option value="member">สมาชิกทั่วไป (Member) - ดูเวลา, กดอัปเดตเวลาบอส</option>
+                  <option value="admin">แอดมิน (Admin) - จัดการสมาชิก, รีเซ็ตเวลา, เชื่อมต่อชีต</option>
+                </select>
               </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg transition active:scale-95"
+              >
+                สร้างบัญชีผู้ใช้ใหม่
+              </button>
             </form>
           )}
 
+          {/* Backup & Restore Tab */}
           {activeTab === 'backup' && (
             <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center gap-2">
-                  <DownloadCloud className="w-5 h-5 text-indigo-400" />
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-200">ดาวน์โหลดสำรองข้อมูลบนคลาวด์</h3>
-                    <p className="text-xs text-slate-400">บันทึกเวลาบอส, รายชื่อสมาชิก, และการตั้งค่าลงไฟล์ JSON</p>
-                  </div>
-                </div>
+              <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                <h4 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <DownloadCloud className="w-4 h-4 text-emerald-400" />
+                  <span>ดาวน์โหลดไฟล์สำรองข้อมูล (JSON Backup)</span>
+                </h4>
+                <p className="text-xs text-slate-400">
+                  ดาวน์โหลดข้อมูลบอส เวลาเกิดทั้งหมด และบัญชีผู้ใช้ เพื่อเก็บสำรองไว้ในเครื่องคอมพิวเตอร์ของคุณ
+                </p>
                 <button
                   onClick={handleDownloadBackup}
-                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/30 flex items-center gap-2"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5"
                 >
                   <DownloadCloud className="w-4 h-4" />
-                  <span>ดาวน์โหลดไฟล์สำรองข้อมูล (Export JSON)</span>
+                  <span>ดาวน์โหลดไฟล์ Backup</span>
                 </button>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center gap-2">
-                  <UploadCloud className="w-5 h-5 text-amber-400" />
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-200">กู้คืนข้อมูลสำรอง (Restore)</h3>
-                    <p className="text-xs text-slate-400">นำเข้าไฟล์ JSON ที่เคยสำรองไว้เพื่อกู้คืนสถานะบอสและผู้ใช้</p>
-                  </div>
-                </div>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleRestoreFile}
-                  className="block w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-amber-300 hover:file:bg-slate-700 cursor-pointer"
-                />
+              <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                <h4 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <UploadCloud className="w-4 h-4 text-indigo-400" />
+                  <span>กู้คืนข้อมูลจากไฟล์สำรอง (Restore Backup)</span>
+                </h4>
+                <p className="text-xs text-slate-400">
+                  เลือกไฟล์สำรองข้อมูล (.json) เพื่อนำข้อมูลบอสและประวัติกลับคืนสู่ระบบ
+                </p>
+                <label className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition cursor-pointer">
+                  <UploadCloud className="w-4 h-4" />
+                  <span>เลือกไฟล์กู้คืนข้อมูล</span>
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleRestoreFile}
+                    className="hidden"
+                  />
+                </label>
               </div>
             </div>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/40 flex items-center justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
-          >
-            ปิดหน้าต่าง
-          </button>
         </div>
       </div>
     </div>

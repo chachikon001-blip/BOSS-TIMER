@@ -36,6 +36,7 @@ interface HeaderProps {
   onOpenAuth: () => void;
   onLogout: () => void;
   onTestSound: () => void;
+  pendingApprovalCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -53,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuth,
   onLogout,
   onTestSound,
+  pendingApprovalCount = 0,
 }) => {
   const [currentTime, setCurrentTime] = useState<string>('');
   const [copiedShare, setCopiedShare] = useState<boolean>(false);
@@ -200,11 +202,16 @@ export const Header: React.FC<HeaderProps> = ({
             {currentUser?.role === 'admin' && (
               <button
                 onClick={onOpenAdmin}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-500/30 text-xs font-medium transition"
+                className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-500/30 text-xs font-medium transition"
                 title="จัดการระบบและผู้ใช้ (Admin)"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
                 <span className="hidden md:inline">จัดการกิลด์</span>
+                {pendingApprovalCount > 0 && (
+                  <span className="flex items-center justify-center px-1.5 py-0.2 text-[10px] font-bold text-white bg-rose-500 rounded-full animate-bounce shadow-sm">
+                    {pendingApprovalCount}
+                  </span>
+                )}
               </button>
             )}
 

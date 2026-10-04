@@ -30,6 +30,7 @@ export interface UserAccount {
   createdAt: string;
   lastLoginAt?: string;
   active: boolean;
+  status?: 'active' | 'pending' | 'rejected';
 }
 
 export interface NotificationSettings {

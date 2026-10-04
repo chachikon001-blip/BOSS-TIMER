@@ -9,16 +9,18 @@ import {
   AlertCircle, 
   Eye, 
   EyeOff, 
-  ShieldCheck, 
   Sparkles,
-  Users
+  Users,
+  Clock,
+  CheckCircle2,
+  ShieldAlert
 } from 'lucide-react';
 import { UserAccount } from '../types/boss';
 
 interface GuildLoginScreenProps {
   users: UserAccount[];
-  onLogin: (username: string, pass: string) => Promise<boolean>;
-  onRegister: (data: { username: string; displayName: string; password?: string }) => Promise<boolean>;
+  onLogin: (username: string, pass: string) => Promise<{ success: boolean; error?: string } | boolean>;
+  onRegister: (data: { username: string; displayName: string; password?: string }) => Promise<{ success: boolean; message?: string; isPending?: boolean } | boolean>;
 }
 
 export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
@@ -32,6 +34,7 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
   const [displayName, setDisplayName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -46,11 +49,16 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
     }
 
     setErrorMsg('');
+    setSuccessMsg('');
     setLoading(true);
 
     try {
-      const success = await onLogin(username.trim(), password);
-      if (!success) {
+      const res = await onLogin(username.trim(), password);
+      if (typeof res === 'object') {
+        if (!res.success) {
+          setErrorMsg(res.error || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง หรือบัญชีถูกระงับ');
+        }
+      } else if (!res) {
         setErrorMsg('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง หรือบัญชีถูกระงับ');
       }
     } catch (err: unknown) {
@@ -72,15 +80,32 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
     }
 
     setErrorMsg('');
+    setSuccessMsg('');
     setLoading(true);
 
     try {
-      const success = await onRegister({
-        username: username.trim(),
+      const regUsername = username.trim();
+      const res = await onRegister({
+        username: regUsername,
         displayName: displayName.trim(),
         password,
       });
-      if (!success) {
+
+      if (typeof res === 'object') {
+        if (res.success) {
+          setSuccessMsg(res.message || 'ส่งคำขอลงทะเบียนเรียบร้อยแล้ว! กรุณารอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งาน');
+          setMode('login');
+          setUsername(regUsername);
+          setPassword('');
+        } else {
+          setErrorMsg(res.message || 'ไม่สามารถลงทะเบียนได้ ชื่อผู้ใช้นี้อาจมีในระบบแล้ว');
+        }
+      } else if (res) {
+        setSuccessMsg('ส่งคำขอลงทะเบียนเรียบร้อยแล้ว! กรุณารอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งาน');
+        setMode('login');
+        setUsername(regUsername);
+        setPassword('');
+      } else {
         setErrorMsg('ไม่สามารถลงทะเบียนได้ ชื่อผู้ใช้นี้อาจมีในระบบแล้ว');
       }
     } catch (err: unknown) {
@@ -93,7 +118,11 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
   const handleSelectQuickUser = (u: string) => {
     setUsername(u);
     setErrorMsg('');
+    setSuccessMsg('');
   };
+
+  // Only show active / approved users in quick picker
+  const activeMembers = users.filter(u => u.active && u.status !== 'pending' && u.status !== 'rejected');
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden select-none">
@@ -116,12 +145,12 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
             BOSS TIMER PRO
           </h1>
           <p className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-semibold">
-            Lineage 2M Guild Timer & Real-Time Sync
+            Lineage 2M Guild Timer & Cloud Sync
           </p>
 
           <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-3 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold shadow-sm">
             <Lock className="w-3.5 h-3.5" />
-            <span>ต้องเข้าสู่ระบบก่อนเข้าใช้งาน</span>
+            <span>เข้าสู่ระบบด้วย ID กิลด์ (ไม่ต้องใช้บัญชีภายนอก)</span>
           </div>
         </div>
 
@@ -149,6 +178,7 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
               onClick={() => {
                 setMode('register');
                 setErrorMsg('');
+                setSuccessMsg('');
               }}
               className={`py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition ${
                 mode === 'register'
@@ -157,15 +187,34 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
               }`}
             >
               <UserPlus className="w-4 h-4" />
-              <span>ลงทะเบียนใหม่</span>
+              <span>สมัครสมาชิกใหม่</span>
             </button>
           </div>
 
+          {/* Success Banner (e.g. Registered waiting for approval) */}
+          {successMsg && (
+            <div className="mb-5 p-3.5 rounded-xl bg-amber-950/60 border border-amber-500/50 text-amber-300 text-xs flex items-start gap-2.5">
+              <Clock className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-200">ส่งคำขอสมัครสำเร็จ!</p>
+                <p className="text-[11px] text-amber-300/90 mt-0.5">{successMsg}</p>
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
           {errorMsg && (
-            <div className="mb-5 p-3 rounded-xl bg-rose-950/70 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2.5 animate-shake">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-              <span>{errorMsg}</span>
+            <div className={`mb-5 p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+              errorMsg.includes('รอหัวหน้ากิลด์') || errorMsg.includes('อนุมัติ')
+                ? 'bg-amber-950/70 border-amber-500/50 text-amber-300'
+                : 'bg-rose-950/70 border-rose-500/40 text-rose-300'
+            }`}>
+              {errorMsg.includes('รอหัวหน้ากิลด์') || errorMsg.includes('อนุมัติ') ? (
+                <Clock className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+              )}
+              <span className="leading-relaxed">{errorMsg}</span>
             </div>
           )}
 
@@ -219,17 +268,17 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
               </div>
 
               {/* Quick User Picker from existing accounts */}
-              {users && users.length > 0 && (
+              {activeMembers && activeMembers.length > 0 && (
                 <div className="pt-2">
                   <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2">
                     <span className="flex items-center gap-1">
                       <Users className="w-3 h-3 text-amber-400" />
-                      <span>เลือกชื่อผู้ใช้ในกิลด์ของคุณ:</span>
+                      <span>เลือกบัญชีที่มีอยู่:</span>
                     </span>
-                    <span className="text-[10px] text-slate-500">(รหัสเริ่มต้น: 123456)</span>
+                    <span className="text-[10px] text-slate-500">(รหัสเริ่มต้น: 123456 / admin123)</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {users.map((u) => (
+                    {activeMembers.map((u) => (
                       <button
                         key={u.id}
                         type="button"
@@ -270,6 +319,13 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
             </form>
           ) : (
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
+              <div className="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <span>
+                  <strong>การสมัครต้องรอ Admin อนุมัติ:</strong> เมื่อส่งคำขอแล้ว หัวหน้ากิลด์ (Admin) จะได้รับคำขอและกดอนุมัติ ID ของคุณก่อนเข้าใช้งาน
+                </span>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">
                   ชื่อผู้ใช้ที่ต้องการ (Username สำหรับล็อกอิน)
@@ -302,7 +358,7 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
                     required
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="เช่น เป้ บิชอป"
+                    placeholder="เช่น เป้ บิชอป, นายหัวแคลน"
                     className="w-full pl-9 pr-3 py-2.5 bg-slate-950/80 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
@@ -342,12 +398,12 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
                 {loading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>กำลังลงทะเบียน...</span>
+                    <span>กำลังส่งคำขอ...</span>
                   </>
                 ) : (
                   <>
-                    <UserPlus className="w-4 h-4" />
-                    <span>ลงทะเบียนและเข้าสู่ระบบทันที</span>
+                    <Clock className="w-4 h-4" />
+                    <span>ส่งคำขอลงทะเบียน (รอ Admin อนุมัติ)</span>
                   </>
                 )}
               </button>
@@ -357,7 +413,7 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
           {/* Footer Info */}
           <div className="mt-6 pt-4 border-t border-slate-800/80 text-center">
             <p className="text-[11px] text-slate-400">
-              ระบบป้องกันข้อมูลกิลด์ • เฉพาะสมาชิกที่ได้รับอนุญาตเท่านั้น
+              ระบบสมาชิกกิลด์ Lineage 2M • ใช้ ID เข้าสู่ระบบได้ทันที
             </p>
           </div>
         </div>

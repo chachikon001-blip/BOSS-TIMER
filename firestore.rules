@@ -33,7 +33,8 @@ service cloud.firestore {
       return data.id is string && data.id.size() <= 256
         && data.username is string && data.username.size() > 0 && data.username.size() <= 100
         && (data.role == 'admin' || data.role == 'member')
-        && data.active is bool;
+        && data.active is bool
+        && (!('status' in data) || (data.status in ['active', 'pending', 'rejected']));
     }
 
     // Validate Settings Entity

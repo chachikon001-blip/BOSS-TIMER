@@ -57,6 +57,7 @@ interface UserAccount {
   createdAt: string;
   lastLoginAt?: string;
   active: boolean;
+  status?: 'active' | 'pending' | 'rejected';
   passwordHash?: string;
 }
 
@@ -1118,8 +1119,19 @@ app.post('/api/users/login', (req: Request, res: Response) => {
   const { username, password } = req.body;
   const user = state.users.find(u => u.username.toLowerCase() === (username || '').toLowerCase());
   
-  if (!user || !user.active) {
-    return res.status(401).json({ error: 'ไม่พบบัญชีผู้ใช้นี้ หรือบัญชีถูกระงับ' });
+  if (!user) {
+    return res.status(401).json({ error: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' });
+  }
+
+  if (user.status === 'pending' || (!user.active && user.status !== 'rejected')) {
+    return res.status(403).json({ 
+      error: 'บัญชีของคุณอยู่ระหว่างรอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งาน',
+      isPending: true
+    });
+  }
+
+  if (user.status === 'rejected' || !user.active) {
+    return res.status(403).json({ error: 'บัญชีนี้ถูกระงับหรือไม่ได้รับการอนุมัติ กรุณาติดต่อหัวหน้ากิลด์' });
   }
 
   if (user.passwordHash && user.passwordHash !== password) {
@@ -1133,9 +1145,9 @@ app.post('/api/users/login', (req: Request, res: Response) => {
   res.json({ success: true, user: safeUser });
 });
 
-// Admin: Create User ID
+// Admin / Public: Create User ID
 app.post('/api/users/create', (req: Request, res: Response) => {
-  const { username, displayName, password, role } = req.body;
+  const { username, displayName, password, role, createdByAdmin } = req.body;
   if (!username || !displayName) {
     return res.status(400).json({ error: 'กรุณากรอกชื่อผู้ใช้และชื่อแสดง' });
   }
@@ -1145,6 +1157,8 @@ app.post('/api/users/create', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'ชื่อผู้ใช้นี้มีในระบบแล้ว' });
   }
 
+  const isPending = !createdByAdmin && role !== 'admin';
+
   const newUser: UserAccount = {
     id: `user-${Date.now()}`,
     username,
@@ -1152,7 +1166,8 @@ app.post('/api/users/create', (req: Request, res: Response) => {
     role: role === 'admin' ? 'admin' : 'member',
     passwordHash: password || '123456',
     createdAt: new Date().toISOString(),
-    active: true,
+    active: !isPending,
+    status: isPending ? 'pending' : 'active',
   };
 
   state.users.push(newUser);
@@ -1160,12 +1175,12 @@ app.post('/api/users/create', (req: Request, res: Response) => {
   broadcastSSE('users_update', state.users.map(({ passwordHash: _, ...u }) => u));
 
   const { passwordHash: _, ...safeUser } = newUser;
-  res.json({ success: true, user: safeUser });
+  res.json({ success: true, user: safeUser, isPending });
 });
 
 // Admin: Update User Role / Status
 app.post('/api/users/update', (req: Request, res: Response) => {
-  const { userId, role, active, password } = req.body;
+  const { userId, role, active, status, password } = req.body;
   const user = state.users.find(u => u.id === userId);
   if (!user) {
     return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
@@ -1173,6 +1188,7 @@ app.post('/api/users/update', (req: Request, res: Response) => {
 
   if (role) user.role = role;
   if (typeof active === 'boolean') user.active = active;
+  if (status) user.status = status;
   if (password) user.passwordHash = password;
 
   persistState();
