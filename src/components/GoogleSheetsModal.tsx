@@ -20,6 +20,7 @@ import {
   exportBossesToCSV,
   triggerCSVDownload 
 } from '../services/googleSheets';
+import { deduplicateBossList } from '../utils/bossDeduplication';
 import { googleSignIn, getAccessToken, setAccessToken, logoutGoogle, initAuth } from '../services/firebase';
 
 interface GoogleSheetsModalProps {
@@ -134,7 +135,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         }
 
         if (rows && rows.length > 0) {
-          const parsed = convertSheetRowsToBosses(rows, item.server).map(b => ({
+          const parsed = convertSheetRowsToBosses(rows, item.server, bosses).map(b => ({
             ...b,
             server: item.server,
             serverTag: b.serverTag || (item.server === 'main' ? 'T3' : 'S1'),
@@ -144,13 +145,17 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
       }
 
       if (allImported.length > 0) {
+        let finalBossList: Boss[] = [];
         if (target === 'all') {
-          onImportBosses(allImported);
+          finalBossList = allImported;
         } else {
           // Merge keeping other server
           const otherBosses = bosses.filter(b => b.server !== target);
-          onImportBosses([...otherBosses, ...allImported]);
+          finalBossList = [...otherBosses, ...allImported];
         }
+
+        const { uniqueBosses } = deduplicateBossList(finalBossList);
+        onImportBosses(uniqueBosses);
 
         onUpdateSheetConfig({ 
           sheetId, 

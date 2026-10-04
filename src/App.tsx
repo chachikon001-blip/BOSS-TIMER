@@ -38,6 +38,7 @@ import {
 import { formatRemainingTime } from './utils/time';
 import { Shield, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { getApiUrl, getLiveShareUrl } from './services/apiConfig';
+import { deduplicateBossList } from './utils/bossDeduplication';
 import {
   subscribeToFirestoreBosses,
   subscribeToFirestoreUsers,
@@ -57,8 +58,10 @@ export default function App() {
   // Core Data States
   const [bosses, setBosses] = useState<Boss[]>(() => {
     const cached = loadLocalCache();
-    if (cached && cached.length >= 90) return cached;
-    return createInitialBosses();
+    if (cached && cached.length > 0) {
+      return deduplicateBossList(cached).uniqueBosses;
+    }
+    return deduplicateBossList(createInitialBosses()).uniqueBosses;
   });
   const [users, setUsers] = useState<UserAccount[]>(INITIAL_GUILD_USERS);
   const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
@@ -842,14 +845,15 @@ export default function App() {
   };
 
   const handleImportBosses = async (imported: Boss[]) => {
-    setBosses(imported);
-    saveLocalCache(imported);
-    batchSaveBossesToFirestore(imported).catch(() => {});
+    const { uniqueBosses } = deduplicateBossList(imported);
+    setBosses(uniqueBosses);
+    saveLocalCache(uniqueBosses);
+    batchSaveBossesToFirestore(uniqueBosses).catch(() => {});
     try {
       await fetch(getApiUrl('/api/bosses/sync-batch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bosses: imported, override: true }),
+        body: JSON.stringify({ bosses: uniqueBosses, override: true }),
       });
     } catch (e) {
       console.error(e);

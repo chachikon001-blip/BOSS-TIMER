@@ -2,6 +2,7 @@ import { Boss } from '../types/boss';
 import { getAccessToken, setAccessToken } from './firebase';
 import { rawBossList } from '../data/defaultBosses';
 import { getApiUrl } from './apiConfig';
+import { areBossNamesMatching, deduplicateBossList } from '../utils/bossDeduplication';
 
 export interface SheetRowData {
   name: string;
@@ -339,7 +340,11 @@ export async function writeBossesToGoogleSheet(
  * Column J (9): วันที่เเละเวลาเกิดของบอส (Full Datetime e.g. 26/09/2026 19:31)
  * Column K (10): SV. (Server Tag: T3, S1, Invasion)
  */
-export function convertSheetRowsToBosses(rows: string[][], fallbackServer: 'main' | 'sub' = 'main'): Boss[] {
+export function convertSheetRowsToBosses(
+  rows: string[][], 
+  fallbackServer: 'main' | 'sub' = 'main',
+  existingBosses: Boss[] = []
+): Boss[] {
   if (!rows || rows.length === 0) return [];
 
   // Filter out header and empty rows
@@ -484,7 +489,12 @@ export function convertSheetRowsToBosses(rows: string[][], fallbackServer: 'main
       }
     }
 
-    // Match with predefined boss metadata if exists
+    // 1. Match with existing boss in current state first to preserve ID and prevent duplicate documents in Firestore!
+    const existingBossMatch = existingBosses.find(
+      eb => eb.server === server && areBossNamesMatching(eb.name, name)
+    );
+
+    // 2. Match with predefined boss metadata if exists
     const matchedKnownBoss = rawBossList.find(b => {
       const cleanBName = b.name.replace(/\s+/g, ' ').toLowerCase();
       const cleanTarget = name.toLowerCase();
@@ -492,22 +502,31 @@ export function convertSheetRowsToBosses(rows: string[][], fallbackServer: 'main
         cleanTarget.split('-')[0].trim() === cleanBName.split('-')[0].trim();
     });
 
-    const location = matchedKnownBoss?.location || 'ตามแมพ / พื้นที่ล่า';
-    const level = matchedKnownBoss?.level;
-    const dropItems = matchedKnownBoss?.drops || [];
-    const bossNumber = (isColBName && /^\d+$/.test(col0Trimmed)) ? parseInt(col0Trimmed, 10) : matchedKnownBoss?.num;
-    const pinned = matchedKnownBoss?.pinned ?? (index < 3);
+    // Use full canonical name if available (e.g. "เฟลิส - Felis" instead of just "เฟลิส")
+    const canonicalName = existingBossMatch?.name || (matchedKnownBoss ? matchedKnownBoss.name : name);
+    // CRITICAL: Preserve existing ID so Firestore updates the exact document instead of generating duplicate documents!
+    const bossId = existingBossMatch?.id || `${server}-sheet-${name.replace(/[^a-zA-Z0-9ก-๙]/g, '_')}`;
+
+    const location = existingBossMatch?.location || matchedKnownBoss?.location || 'ตามแมพ / พื้นที่ล่า';
+    const level = existingBossMatch?.level ?? matchedKnownBoss?.level;
+    const dropItems = (existingBossMatch?.dropItems && existingBossMatch.dropItems.length > 0)
+      ? existingBossMatch.dropItems
+      : (matchedKnownBoss?.drops || []);
+    const bossNumber = (isColBName && /^\d+$/.test(col0Trimmed)) 
+      ? parseInt(col0Trimmed, 10) 
+      : (existingBossMatch?.bossNumber ?? matchedKnownBoss?.num);
+    const pinned = existingBossMatch?.pinned ?? matchedKnownBoss?.pinned ?? (index < 3);
 
     const bossObj: Boss = {
-      id: `${server}-sheet-${index + 1}-${name.replace(/[^a-zA-Z0-9ก-๙]/g, '_')}`,
-      name,
+      id: bossId,
+      name: canonicalName,
       server,
       serverTag,
       location,
       respawnMinutes,
       lastKilledAt,
       nextSpawnAt,
-      notifiedStages: [],
+      notifiedStages: existingBossMatch?.notifiedStages || [],
       dropItems,
       pinned,
     };
@@ -525,7 +544,8 @@ export function convertSheetRowsToBosses(rows: string[][], fallbackServer: 'main
     bossesList.push(bossObj);
   });
 
-  return bossesList;
+  // Deduplicate before returning so no duplicate names are produced
+  return deduplicateBossList(bossesList).uniqueBosses;
 }
 
 /**

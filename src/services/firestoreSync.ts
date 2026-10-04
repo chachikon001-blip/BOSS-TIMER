@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { Boss, UserAccount, NotificationSettings, SheetConfig } from '../types/boss';
+import { deduplicateBossList } from '../utils/bossDeduplication';
 
 const BOSSES_COLLECTION = 'bosses';
 const USERS_COLLECTION = 'users';
@@ -28,11 +29,24 @@ export function subscribeToFirestoreBosses(
     return onSnapshot(
       colRef,
       (snapshot) => {
-        const bosses: Boss[] = [];
+        const rawBosses: Boss[] = [];
         snapshot.forEach((docSnap) => {
-          bosses.push(docSnap.data() as Boss);
+          rawBosses.push(docSnap.data() as Boss);
         });
-        onUpdate(bosses);
+
+        // Deduplicate bosses to guarantee no duplicate names on screen
+        const { uniqueBosses, duplicatesToRemove } = deduplicateBossList(rawBosses);
+
+        // Permanently delete duplicate documents from Firestore in the background
+        if (duplicatesToRemove.length > 0) {
+          for (const dup of duplicatesToRemove) {
+            if (dup.id && !uniqueBosses.some(u => u.id === dup.id)) {
+              deleteBossFromFirestore(dup.id).catch(() => {});
+            }
+          }
+        }
+
+        onUpdate(uniqueBosses);
       },
       (error) => {
         console.error('Firestore Bosses subscription error:', error);
@@ -176,10 +190,11 @@ export async function saveBossToFirestore(boss: Boss) {
  */
 export async function batchSaveBossesToFirestore(bosses: Boss[]) {
   try {
+    const { uniqueBosses } = deduplicateBossList(bosses);
     // Firestore batch has a 500 operations limit
     const chunkSize = 400;
-    for (let i = 0; i < bosses.length; i += chunkSize) {
-      const chunk = bosses.slice(i, i + chunkSize);
+    for (let i = 0; i < uniqueBosses.length; i += chunkSize) {
+      const chunk = uniqueBosses.slice(i, i + chunkSize);
       const batch = writeBatch(db);
       for (const b of chunk) {
         const docRef = doc(db, BOSSES_COLLECTION, b.id);
