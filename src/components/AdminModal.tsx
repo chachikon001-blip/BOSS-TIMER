@@ -236,6 +236,21 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-2">
+                  <div className="flex items-center justify-between pb-1">
+                    <span className="text-xs text-slate-400 font-medium">คำขอรออนุมัติ: {pendingUsers.length} บัญชี</span>
+                    <button
+                      onClick={async () => {
+                        for (const u of pendingUsers) {
+                          await handleApproveUser(u.id, u.displayName || u.username);
+                        }
+                        setStatusMsg({ type: 'success', text: `อนุมัติสมาชิกทั้งหมด ${pendingUsers.length} บัญชีเรียบร้อยแล้ว!` });
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-sm active:scale-95"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>อนุมัติทั้งหมด ({pendingUsers.length})</span>
+                    </button>
+                  </div>
                   {pendingUsers.map((u) => (
                     <div 
                       key={u.id}

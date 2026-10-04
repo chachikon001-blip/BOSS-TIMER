@@ -10,7 +10,9 @@ import {
   AlertTriangle, 
   ShieldAlert,
   Swords,
-  Sparkles
+  Sparkles,
+  Copy,
+  Check
 } from 'lucide-react';
 import { 
   fetchPublicGoogleSheet, 
@@ -18,6 +20,8 @@ import {
   writeBossesToGoogleSheet, 
   convertSheetRowsToBosses,
   exportBossesToCSV,
+  exportBossesToClipboardText,
+  copyBossesForSheet,
   triggerCSVDownload 
 } from '../services/googleSheets';
 import { deduplicateBossList } from '../utils/bossDeduplication';
@@ -51,6 +55,9 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   // Target server for write operations ('main' | 'sub' | 'all')
   const [targetExportServer, setTargetExportServer] = useState<'main' | 'sub' | 'all'>('all');
   const [showConfirmWrite, setShowConfirmWrite] = useState(false);
+  const [copiedServer, setCopiedServer] = useState<'main' | 'sub' | 'all' | null>(null);
+  // Default to false because user pastes starting at cell A2
+  const [includeHeaderInCopy, setIncludeHeaderInCopy] = useState<boolean>(false);
 
   // Check auth state on load
   React.useEffect(() => {
@@ -179,6 +186,23 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
       setStatusMsg({ type: 'error', text: errMsg });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Copy formatted data with colors to clipboard for instant pasting (Ctrl+V) into Google Sheets
+  const handleCopyForSheet = async (server: 'main' | 'sub' | 'all') => {
+    try {
+      await copyBossesForSheet(bosses, server, includeHeaderInCopy);
+      setCopiedServer(server);
+      setTimeout(() => setCopiedServer(null), 3500);
+      const serverLabel = server === 'all' ? 'ทั้ง 2 เซิร์ฟ' : server === 'main' ? 'เซิร์ฟหลัก' : 'เซิร์ฟรอง';
+      const targetCell = includeHeaderInCopy ? 'A1' : 'A2';
+      setStatusMsg({
+        type: 'success',
+        text: `📋 คัดลอกตารางข้อมูล (${serverLabel}) พร้อมสีพื้นหลังเรียบร้อยแล้ว! สามารถกดที่ช่อง ${targetCell} ใน Google Sheet แล้วกดวาง (Ctrl+V) ได้ทันที (สีจะตรงกับชีตเป๊ะๆ)`,
+      });
+    } catch {
+      setStatusMsg({ type: 'error', text: 'ไม่สามารถคัดลอกข้อมูลลงคลิปบอร์ดได้ กรุณาลองใหม่อีกครั้ง' });
     }
   };
 
@@ -534,40 +558,120 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
               </div>
             </div>
 
-            {/* Quick CSV Download (Zero friction for Google Sheets) */}
-            <div className="space-y-2 pt-2 border-t border-slate-800/80">
-              <div className="flex items-center justify-between">
+            {/* Quick Copy to Clipboard for Google Sheets (Paste directly into Sheet) */}
+            <div className="space-y-2.5 pt-2 border-t border-slate-800/80">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                 <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                  <Download className="w-3.5 h-3.5 text-amber-400" />
-                  <span>ดาวน์โหลดไฟล์ CSV (เปิดใน Google Sheets / Excel ได้ทันที):</span>
+                  <Copy className="w-3.5 h-3.5 text-amber-400" />
+                  <span>คัดลอกตารางข้อมูล (นำไปวาง Ctrl+V บน Google Sheet ได้ทันที):</span>
                 </span>
-                <span className="text-[10px] text-slate-500">ไม่ต้องใช้รหัสผ่าน Google</span>
+                <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeHeaderInCopy}
+                    onChange={(e) => setIncludeHeaderInCopy(e.target.checked)}
+                    className="rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 focus:ring-offset-0 w-3.5 h-3.5 cursor-pointer"
+                  />
+                  <span>{includeHeaderInCopy ? 'รวมหัวตาราง (วางช่อง A1)' : 'เฉพาะข้อมูลบอส (วางช่อง A2)'}</span>
+                </label>
               </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
-                  onClick={() => handleDownloadCSV('main')}
-                  className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition flex items-center justify-center gap-1.5"
+                  onClick={() => handleCopyForSheet('main')}
+                  className={`py-2 px-2.5 rounded-xl border text-xs font-semibold transition flex items-center justify-center gap-1.5 active:scale-95 ${
+                    copiedServer === 'main'
+                      ? 'bg-emerald-900/60 border-emerald-500/60 text-emerald-200 shadow-sm'
+                      : 'bg-slate-800/90 hover:bg-slate-700 border-slate-700 text-blue-200'
+                  }`}
                 >
-                  <Download className="w-3.5 h-3.5 text-blue-400" />
-                  <span>CSV เซิร์ฟหลัก</span>
+                  {copiedServer === 'main' ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>คัดลอกสำเร็จ!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-blue-400" />
+                      <span>คัดลอก เซิร์ฟหลัก</span>
+                    </>
+                  )}
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => handleDownloadCSV('sub')}
-                  className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition flex items-center justify-center gap-1.5"
+                  onClick={() => handleCopyForSheet('sub')}
+                  className={`py-2 px-2.5 rounded-xl border text-xs font-semibold transition flex items-center justify-center gap-1.5 active:scale-95 ${
+                    copiedServer === 'sub'
+                      ? 'bg-emerald-900/60 border-emerald-500/60 text-emerald-200 shadow-sm'
+                      : 'bg-slate-800/90 hover:bg-slate-700 border-slate-700 text-purple-200'
+                  }`}
                 >
-                  <Download className="w-3.5 h-3.5 text-purple-400" />
-                  <span>CSV เซิร์ฟรอง</span>
+                  {copiedServer === 'sub' ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>คัดลอกสำเร็จ!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-purple-400" />
+                      <span>คัดลอก เซิร์ฟรอง</span>
+                    </>
+                  )}
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => handleDownloadCSV('all')}
-                  className="py-2 px-2.5 rounded-xl bg-amber-950/40 hover:bg-amber-900/50 border border-amber-500/40 text-xs font-bold text-amber-300 transition flex items-center justify-center gap-1.5"
+                  onClick={() => handleCopyForSheet('all')}
+                  className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-1.5 active:scale-95 ${
+                    copiedServer === 'all'
+                      ? 'bg-emerald-900/60 border-emerald-500/60 text-emerald-200 shadow-sm'
+                      : 'bg-amber-950/40 hover:bg-amber-900/50 border-amber-500/40 text-amber-300'
+                  }`}
                 >
-                  <Download className="w-3.5 h-3.5 text-amber-400" />
-                  <span>CSV ทั้ง 2 เซิร์ฟ</span>
+                  {copiedServer === 'all' ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>คัดลอกสำเร็จ!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-amber-400" />
+                      <span>คัดลอก ทั้ง 2 เซิร์ฟ</span>
+                    </>
+                  )}
                 </button>
+              </div>
+
+              {/* Color legend from user sheet */}
+              <div className="flex flex-wrap items-center gap-2 p-2 bg-slate-950/70 rounded-xl border border-slate-800 text-[11px]">
+                <span className="font-semibold text-slate-300">สีที่ติดไปในชีต:</span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-emerald-950 font-bold bg-[#d9ead3] border border-emerald-300">
+                  🟢 เขียว (เกิด 100%)
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-amber-950 font-bold bg-[#fff2cc] border border-amber-300">
+                  🟡 เหลือง (โอกาส 50%)
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-rose-950 font-bold bg-[#f4cccc] border border-rose-300">
+                  🔴 แดง (โอกาส 33%)
+                </span>
+              </div>
+
+              {/* Sub-text guide & CSV option */}
+              <div className="flex items-center justify-between text-[11px] text-slate-400 px-0.5 pt-0.5">
+                <span>💡 วิธีใช้: กดปุ่มคัดลอก แล้วไปที่ Google Sheets กดคลิกช่อง <strong>{includeHeaderInCopy ? 'A1' : 'A2'}</strong> แล้วกด <strong>Ctrl+V</strong> วางได้ทันที</span>
+                <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                  <span className="text-slate-600">|</span>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadCSV('all')}
+                    className="text-[10px] text-slate-400 hover:text-amber-300 underline flex items-center gap-1"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>ดาวน์โหลดเป็นไฟล์ CSV</span>
+                  </button>
+                </div>
               </div>
             </div>
 

@@ -88,10 +88,12 @@ export const rawBossList = [
 ];
 
 import bossesSeed from './bosses_seed.json';
+import { enrichBossColors } from '../utils/bossColorMap';
 
 export function createInitialBosses(): Boss[] {
-  return (bossesSeed as Boss[]).map((b) => ({
+  const initialized = (bossesSeed as Boss[]).map((b) => ({
     ...b,
     notifiedStages: b.notifiedStages || [],
   }));
+  return enrichBossColors(initialized);
 }

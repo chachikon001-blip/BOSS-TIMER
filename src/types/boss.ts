@@ -18,6 +18,9 @@ export interface Boss {
   dropItems?: string[];
   pinned?: boolean;
   bossNumber?: number;
+  spawnChance?: number; // e.g. 100, 50, 33 (%)
+  spawnColor?: string;  // e.g. '#d9ead3' (green 100%), '#fff2cc' (yellow 50%), '#f4cccc' (red 33%)
+  sheetRowIndex?: number;
 }
 
 export interface UserAccount {

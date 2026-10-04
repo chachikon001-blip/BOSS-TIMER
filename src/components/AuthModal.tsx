@@ -61,14 +61,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const res = await onRegister({ username, displayName, password });
       if (typeof res === 'object') {
         if (res.success) {
-          setSuccessMsg(res.message || 'ส่งคำขอลงทะเบียนเรียบร้อยแล้ว กรุณารอหัวหน้ากิลด์ (Admin) อนุมัติ');
-          setMode('login');
+          setSuccessMsg(res.message || 'สร้าง ID และเข้าสู่ระบบเรียบร้อยแล้ว');
+          onClose();
         } else {
           setErrorMsg(res.message || 'ไม่สามารถลงทะเบียนได้');
         }
       } else if (res) {
-        setSuccessMsg('ส่งคำขอลงทะเบียนเรียบร้อยแล้ว กรุณารอหัวหน้ากิลด์ (Admin) อนุมัติ');
-        setMode('login');
+        setSuccessMsg('สร้าง ID และเข้าสู่ระบบเรียบร้อยแล้ว');
+        onClose();
       } else {
         setErrorMsg('ไม่สามารถลงทะเบียนได้');
       }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Boss } from '../types/boss';
 import { X, Clock, Calendar, MapPin, Trash2, Save, RotateCcw } from 'lucide-react';
+import { getBossColorInfo } from '../utils/bossColorMap';
 
 interface EditBossModalProps {
   boss: Boss | null;
@@ -33,6 +34,8 @@ export const EditBossModal: React.FC<EditBossModalProps> = ({
   const [lastKilledAt, setLastKilledAt] = useState<string>(toLocalISOString(boss?.lastKilledAt || null));
   const [nextSpawnAt, setNextSpawnAt] = useState<string>(toLocalISOString(boss?.nextSpawnAt || null));
   const [notes, setNotes] = useState(boss?.notes || '');
+  const [spawnChance, setSpawnChance] = useState<number>(boss?.spawnChance ?? (boss ? getBossColorInfo(boss).spawnChance : 100));
+  const [spawnColor, setSpawnColor] = useState<string>(boss?.spawnColor || (boss ? getBossColorInfo(boss).spawnColor : '#d9ead3'));
 
   // Synchronize form when boss prop changes
   React.useEffect(() => {
@@ -46,6 +49,9 @@ export const EditBossModal: React.FC<EditBossModalProps> = ({
       setLastKilledAt(toLocalISOString(boss.lastKilledAt));
       setNextSpawnAt(toLocalISOString(boss.nextSpawnAt));
       setNotes(boss.notes || '');
+      const colorInfo = getBossColorInfo(boss);
+      setSpawnChance(boss.spawnChance ?? colorInfo.spawnChance);
+      setSpawnColor(boss.spawnColor || colorInfo.spawnColor);
     }
   }, [boss]);
 
@@ -82,6 +88,8 @@ export const EditBossModal: React.FC<EditBossModalProps> = ({
       lastKilledAt: lastKilledAt ? new Date(lastKilledAt).toISOString() : null,
       nextSpawnAt: nextSpawnAt ? new Date(nextSpawnAt).toISOString() : null,
       notes,
+      spawnChance,
+      spawnColor,
     });
     onClose();
   };
@@ -269,6 +277,100 @@ export const EditBossModal: React.FC<EditBossModalProps> = ({
                 <RotateCcw className="w-3 h-3 text-rose-400" />
                 <span>รีเซ็ตเป็น --:--</span>
               </button>
+            </div>
+          </div>
+
+          {/* Spawn Chance & Color for Google Sheet */}
+          <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-amber-300">
+                โอกาสบอสเกิด (%) และ สีประจำบอส (สำหรับคัดลอกลงชีต)
+              </label>
+              <span className="text-[10px] text-slate-400">จับคู่สีชีตอัตโนมัติ</span>
+            </div>
+
+            {/* Quick Presets matching User Sheet */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSpawnChance(100);
+                  setSpawnColor('#d9ead3');
+                }}
+                className={`p-2 rounded-lg border text-xs font-bold transition flex flex-col items-center gap-1 ${
+                  spawnChance === 100 && spawnColor === '#d9ead3'
+                    ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300 ring-1 ring-emerald-500'
+                    : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600'
+                }`}
+              >
+                <div className="w-4 h-4 rounded-full bg-[#d9ead3] border border-emerald-400 shrink-0" />
+                <span>เกิด 100%</span>
+                <span className="text-[10px] font-normal text-emerald-400">สีเขียว</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSpawnChance(50);
+                  setSpawnColor('#fff2cc');
+                }}
+                className={`p-2 rounded-lg border text-xs font-bold transition flex flex-col items-center gap-1 ${
+                  spawnChance === 50 && spawnColor === '#fff2cc'
+                    ? 'border-amber-500 bg-amber-950/40 text-amber-300 ring-1 ring-amber-500'
+                    : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600'
+                }`}
+              >
+                <div className="w-4 h-4 rounded-full bg-[#fff2cc] border border-amber-400 shrink-0" />
+                <span>โอกาส 50%</span>
+                <span className="text-[10px] font-normal text-amber-400">สีเหลือง</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSpawnChance(33);
+                  setSpawnColor('#f4cccc');
+                }}
+                className={`p-2 rounded-lg border text-xs font-bold transition flex flex-col items-center gap-1 ${
+                  spawnChance === 33 && spawnColor === '#f4cccc'
+                    ? 'border-rose-500 bg-rose-950/40 text-rose-300 ring-1 ring-rose-500'
+                    : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600'
+                }`}
+              >
+                <div className="w-4 h-4 rounded-full bg-[#f4cccc] border border-rose-400 shrink-0" />
+                <span>โอกาส 33%</span>
+                <span className="text-[10px] font-normal text-rose-400">สีแดง</span>
+              </button>
+            </div>
+
+            {/* Custom Chance & Color Picker */}
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">ระบุ % โอกาสเกิดเอง</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={spawnChance}
+                    onChange={(e) => setSpawnChance(Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 100)))}
+                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono pr-7 focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">%</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">เลือกสีแถวในชีต</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={spawnColor}
+                    onChange={(e) => setSpawnColor(e.target.value)}
+                    className="w-8 h-8 rounded border border-slate-700 bg-slate-900 cursor-pointer p-0.5"
+                  />
+                  <span className="text-xs font-mono text-slate-300 uppercase">{spawnColor}</span>
+                </div>
+              </div>
             </div>
           </div>
 

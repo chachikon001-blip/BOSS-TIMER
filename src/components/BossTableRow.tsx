@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Boss } from '../types/boss';
 import { formatRemainingTime } from '../utils/time';
+import { getBossColorInfo } from '../utils/bossColorMap';
 import { 
   Star, 
   MapPin, 
@@ -136,6 +137,32 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
               {isMain ? <ShieldAlert className="w-3 h-3" /> : <Swords className="w-3 h-3" />}
               <span>{boss.serverTag ? `${isMain ? 'เซิร์ฟหลัก' : 'เซิร์ฟรอง'} [${boss.serverTag}]` : (isMain ? 'เซิร์ฟหลัก' : 'เซิร์ฟรอง')}</span>
             </span>
+
+            {/* Spawn Chance Badge matching Google Sheet */}
+            {(() => {
+              const colorInfo = getBossColorInfo(boss);
+              const chance = boss.spawnChance ?? colorInfo.spawnChance;
+              const isGreen = chance >= 90;
+              const isYellow = chance >= 40 && chance < 90;
+              return (
+                <span
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                    isGreen
+                      ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
+                      : isYellow
+                      ? 'bg-amber-950/60 text-amber-300 border-amber-500/40'
+                      : 'bg-rose-950/60 text-rose-300 border-rose-500/40'
+                  }`}
+                  title={`โอกาสบอสเกิด ${chance}% (สีชีต: ${boss.spawnColor || colorInfo.spawnColor})`}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full inline-block"
+                    style={{ backgroundColor: boss.spawnColor || colorInfo.spawnColor }}
+                  />
+                  <span>{chance}%</span>
+                </span>
+              );
+            })()}
 
             {/* Status Pill */}
             {timeInfo.isAlive ? (

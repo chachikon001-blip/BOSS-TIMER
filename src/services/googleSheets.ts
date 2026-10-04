@@ -3,6 +3,7 @@ import { getAccessToken, setAccessToken } from './firebase';
 import { rawBossList } from '../data/defaultBosses';
 import { getApiUrl } from './apiConfig';
 import { areBossNamesMatching, deduplicateBossList } from '../utils/bossDeduplication';
+import { getBossColorInfo } from '../utils/bossColorMap';
 
 export interface SheetRowData {
   name: string;
@@ -146,10 +147,12 @@ const pad = (n: number) => String(n).padStart(2, '0');
  * Column K (10): วันที่เเละเวลาเกิดของบอส (DD/MM/YYYY HH:mm)
  * Column L (11): SV. (T3, Invasion, etc.)
  */
-function buildSheetRows(bossList: Boss[]): (string | number)[][] {
+function buildSheetRows(bossList: Boss[], includeHeader: boolean = true): (string | number)[][] {
   // Row 1: Header row (Col A is blank, Col B is Name, ..., Col L is SV.)
-  const rows: (string | number)[][] = [
-    [
+  const rows: (string | number)[][] = [];
+
+  if (includeHeader) {
+    rows.push([
       '',
       'Name',
       'Hr.',
@@ -162,8 +165,8 @@ function buildSheetRows(bossList: Boss[]): (string | number)[][] {
       'เรียงบอส',
       'วันที่เเละเวลาเกิดของบอส',
       'SV.',
-    ],
-  ];
+    ]);
+  }
 
   const nowMs = Date.now();
 
@@ -588,49 +591,246 @@ export async function writeRebootTimeToGoogleSheet(
 }
 
 /**
- * Export bosses data to CSV string with UTF-8 BOM for Thai language support
+ * Sorts bosses to match the Google Sheet row structure (e.g., Felis on row 2, Valefar on row 3, etc.)
+ */
+export function sortBossesForSheet(bossList: Boss[]): Boss[] {
+  return [...bossList].sort((a, b) => {
+    const infoA = getBossColorInfo(a);
+    const infoB = getBossColorInfo(b);
+    const rowA = a.sheetRowIndex ?? infoA.sheetRow ?? 999;
+    const rowB = b.sheetRowIndex ?? infoB.sheetRow ?? 999;
+    if (rowA !== rowB) return rowA - rowB;
+    return (a.bossNumber || 999) - (b.bossNumber || 999);
+  });
+}
+
+/**
+ * Returns formatted sheet rows along with background color for each row
+ */
+export function buildSheetRowsWithColors(
+  bossList: Boss[],
+  includeHeader: boolean = false
+): { cells: (string | number)[]; color: string; spawnChance?: number }[] {
+  const result: { cells: (string | number)[]; color: string; spawnChance?: number }[] = [];
+
+  if (includeHeader) {
+    result.push({
+      cells: [
+        '',
+        'Name',
+        'Hr.',
+        'วันที่ตาย',
+        'ชม',
+        'นาที',
+        'Update',
+        'Respawn GMT+7',
+        'Respawn GMT+8',
+        'เรียงบอส',
+        'วันที่เเละเวลาเกิดของบอส',
+        'SV.',
+      ],
+      color: '#ffffff',
+    });
+  }
+
+  const nowMs = Date.now();
+
+  bossList.forEach((b, index) => {
+    const colorInfo = getBossColorInfo(b);
+    const bossNum = b.bossNumber !== undefined ? b.bossNumber : (index + 1);
+    const respawnHours = (b.respawnMinutes / 60).toFixed(1).replace(/\.0$/, '');
+    const serverLabel = b.serverTag || (b.server === 'main' ? 'T3' : 'Invasion');
+
+    let deathDateStr = '';
+    let deathHourStr = '';
+    let deathMinStr = '';
+    let respawnGmt7 = 'ไม่ทราบเวลา';
+    let respawnGmt8 = 'ไม่ทราบเวลา';
+    let fullSpawnStr = 'ไม่ทราบเวลา';
+    let minutesLeftStr = '-';
+
+    if (b.lastKilledAt) {
+      const d = new Date(b.lastKilledAt);
+      if (!isNaN(d.getTime())) {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Bangkok',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(d);
+
+        const getVal = (type: string) => parts.find(p => p.type === type)?.value || '';
+        deathDateStr = `${getVal('day')}/${getVal('month')}/${getVal('year')}`;
+        deathHourStr = parseInt(getVal('hour'), 10).toString();
+        deathMinStr = parseInt(getVal('minute'), 10).toString();
+      }
+    }
+
+    if (b.nextSpawnAt) {
+      const sp = new Date(b.nextSpawnAt);
+      if (!isNaN(sp.getTime())) {
+        const diffMinutes = Math.round((sp.getTime() - nowMs) / 60000);
+        minutesLeftStr = diffMinutes.toString();
+
+        respawnGmt7 = sp.toLocaleTimeString('th-TH', {
+          timeZone: 'Asia/Bangkok',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+
+        respawnGmt8 = sp.toLocaleTimeString('en-US', {
+          timeZone: 'Asia/Singapore',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+
+        const spParts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Bangkok',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(sp);
+
+        const getSp = (type: string) => spParts.find(p => p.type === type)?.value || '';
+        fullSpawnStr = `${getSp('day')}/${getSp('month')}/${getSp('year')} ${getSp('hour')}:${getSp('minute')}`;
+      }
+    }
+
+    result.push({
+      cells: [
+        bossNum,
+        b.name,
+        respawnHours,
+        deathDateStr,
+        deathHourStr,
+        deathMinStr,
+        'FALSE',
+        respawnGmt7,
+        respawnGmt8,
+        minutesLeftStr,
+        fullSpawnStr,
+        serverLabel,
+      ],
+      color: b.spawnColor || colorInfo.spawnColor || '#ffffff',
+      spawnChance: b.spawnChance ?? colorInfo.spawnChance,
+    });
+  });
+
+  return result;
+}
+
+/**
+ * Build rich HTML Table with exact background colors for Google Sheets clipboard paste
+ * When pasted into cell A2, Google Sheets colors the rows/cells accordingly!
+ */
+export function buildSheetHTMLTable(
+  bossList: Boss[],
+  includeHeader: boolean = false
+): string {
+  const sorted = sortBossesForSheet(bossList);
+  const rows = buildSheetRowsWithColors(sorted, includeHeader);
+
+  let html = '<meta charset="utf-8">';
+  html += '<table style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10pt;">';
+
+  for (const r of rows) {
+    const bg = r.color || '#ffffff';
+    html += `<tr style="background-color: ${bg}; height: 21px;">`;
+    for (const cell of r.cells) {
+      const val = cell !== undefined && cell !== null ? String(cell) : '';
+      const escaped = val
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+      html += `<td style="background-color: ${bg}; border: 1px solid #d9d9d9; padding: 2px 4px; mso-number-format:'\\@';">${escaped}</td>`;
+    }
+    html += '</tr>';
+  }
+
+  html += '</table>';
+  return html;
+}
+
+/**
+ * Export bosses data formatted for Google Sheets clipboard paste (Tab-separated values / TSV)
+ * Can be pasted directly (Ctrl+V) into Google Sheets cell A1 or A2!
+ */
+export function exportBossesToClipboardText(
+  bosses: Boss[], 
+  server: 'main' | 'sub' | 'all' = 'all',
+  includeHeader: boolean = false
+): string {
+  const filtered = server === 'all' ? bosses : bosses.filter((b) => b.server === server);
+  const sorted = sortBossesForSheet(filtered);
+  const rows = buildSheetRowsWithColors(sorted, includeHeader).map(r => r.cells);
+  return rows
+    .map(row => row.map(val => String(val ?? '').replace(/\t/g, ' ')).join('\t'))
+    .join('\n');
+}
+
+/**
+ * Copies bosses data to clipboard with full HTML formatting and colors for pasting at cell A2!
+ */
+export async function copyBossesForSheet(
+  bosses: Boss[],
+  server: 'main' | 'sub' | 'all' = 'all',
+  includeHeader: boolean = false
+): Promise<boolean> {
+  const filtered = server === 'all' ? bosses : bosses.filter((b) => b.server === server);
+  const sorted = sortBossesForSheet(filtered);
+  const tsvText = exportBossesToClipboardText(sorted, 'all', includeHeader);
+  const htmlTable = buildSheetHTMLTable(sorted, includeHeader);
+
+  try {
+    if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {
+      const item = new ClipboardItem({
+        'text/html': new Blob([htmlTable], { type: 'text/html' }),
+        'text/plain': new Blob([tsvText], { type: 'text/plain' }),
+      });
+      await navigator.clipboard.write([item]);
+      return true;
+    }
+  } catch (err) {
+    console.warn('ClipboardItem HTML copy failed, falling back to text:', err);
+  }
+
+  // Fallback to plain text TSV
+  await navigator.clipboard.writeText(tsvText);
+  return true;
+}
+
+/**
+ * Export bosses data to CSV string with UTF-8 BOM matching the exact Google Sheet format
  */
 export function exportBossesToCSV(bosses: Boss[], server: 'main' | 'sub' | 'all' = 'all'): string {
   const filtered = server === 'all' ? bosses : bosses.filter((b) => b.server === server);
-
-  const headers = ['ลำดับ', 'ชื่อบอส', 'วันที่ตาย', 'เวลาตาย', 'วันที่เกิด', 'เวลาเกิด', 'สถานที่', 'รอบเกิด(นาที)', 'เซิร์ฟเวอร์', 'สถานะ'];
-  const rows = filtered.map((b, idx) => {
-    let killDate = '-';
-    let killTime = '-';
-    if (b.lastKilledAt) {
-      const kd = new Date(b.lastKilledAt);
-      killDate = `${String(kd.getDate()).padStart(2, '0')}/${String(kd.getMonth() + 1).padStart(2, '0')}/${kd.getFullYear()}`;
-      killTime = `${String(kd.getHours()).padStart(2, '0')}:${String(kd.getMinutes()).padStart(2, '0')}:${String(kd.getSeconds()).padStart(2, '0')}`;
-    }
-
-    let spawnDate = '-';
-    let spawnTime = '-';
-    if (b.nextSpawnAt) {
-      const sd = new Date(b.nextSpawnAt);
-      spawnDate = `${String(sd.getDate()).padStart(2, '0')}/${String(sd.getMonth() + 1).padStart(2, '0')}/${sd.getFullYear()}`;
-      spawnTime = `${String(sd.getHours()).padStart(2, '0')}:${String(sd.getMinutes()).padStart(2, '0')}:${String(sd.getSeconds()).padStart(2, '0')}`;
-    }
-
-    const serverLabel = b.server === 'main' ? (b.serverTag || 'เซิร์ฟหลัก T3') : (b.serverTag || 'เซิร์ฟรอง S1');
-    const isSpawned = b.nextSpawnAt ? new Date(b.nextSpawnAt).getTime() <= Date.now() : false;
-    const status = isSpawned ? 'เกิดแล้ว' : (b.nextSpawnAt ? 'กำลังรอเกิด' : 'ยังไม่มีเวลา');
-
-    return [
-      String(b.bossNumber || idx + 1),
-      `"${b.name.replace(/"/g, '""')}"`,
-      killDate,
-      killTime,
-      spawnDate,
-      spawnTime,
-      `"${(b.location || '-').replace(/"/g, '""')}"`,
-      String(b.respawnMinutes),
-      `"${serverLabel}"`,
-      status,
-    ].join(',');
-  });
+  const sorted = sortBossesForSheet(filtered);
+  const rows = buildSheetRows(sorted, true);
+  const csvContent = rows
+    .map(row =>
+      row
+        .map(cell => {
+          const str = String(cell ?? '');
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        })
+        .join(',')
+    )
+    .join('\r\n');
 
   // UTF-8 Byte Order Mark for Thai characters in Excel and Google Sheets
-  return '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+  return '\uFEFF' + csvContent;
 }
 
 export function triggerCSVDownload(csvContent: string, filename: string) {
