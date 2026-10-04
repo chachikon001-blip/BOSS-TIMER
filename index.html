@@ -12,6 +12,72 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Completely disable Vite HMR WebSocket in preview/iframe environment
+      (function() {
+        var NativeWebSocket = window.WebSocket;
+        if (NativeWebSocket) {
+          window.WebSocket = function(url, protocols) {
+            var urlStr = String(url || '');
+            // If it's a Vite HMR connection, neutralize it cleanly
+            if (urlStr.indexOf('vite') !== -1 || urlStr.indexOf('localhost') !== -1 || urlStr.indexOf('ws://') === 0 || urlStr.indexOf('wss://') === 0) {
+              return {
+                url: urlStr,
+                readyState: 3,
+                CONNECTING: 0,
+                OPEN: 1,
+                CLOSING: 2,
+                CLOSED: 3,
+                send: function() {},
+                close: function() {},
+                addEventListener: function() {},
+                removeEventListener: function() {},
+                dispatchEvent: function() { return false; },
+                onopen: null,
+                onclose: null,
+                onerror: null,
+                onmessage: null,
+              };
+            }
+            return new NativeWebSocket(url, protocols);
+          };
+          window.WebSocket.prototype = NativeWebSocket.prototype;
+          window.WebSocket.CONNECTING = 0;
+          window.WebSocket.OPEN = 1;
+          window.WebSocket.CLOSING = 2;
+          window.WebSocket.CLOSED = 3;
+        }
+
+        // Cleanly suppress any lingering unhandled WebSocket rejections
+        window.addEventListener('unhandledrejection', function(e) {
+          var str = String((e && (e.reason && (e.reason.message || e.reason))) || '');
+          if (str.indexOf('WebSocket') !== -1 || str.indexOf('vite') !== -1) {
+            e.preventDefault();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          }
+        }, true);
+
+        // Cleanly suppress window errors from WebSocket
+        window.addEventListener('error', function(e) {
+          var str = String((e && (e.message || e.error)) || '');
+          if (str.indexOf('WebSocket') !== -1 || str.indexOf('vite') !== -1) {
+            e.preventDefault();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          }
+        }, true);
+
+        // Filter out [vite] WebSocket console errors
+        var originalConsoleError = console.error;
+        console.error = function() {
+          var args = Array.prototype.slice.call(arguments);
+          var joined = args.map(function(a) { return String((a && a.message) || a); }).join(' ');
+          if (joined.indexOf('WebSocket') !== -1 || joined.indexOf('[vite]') !== -1) {
+            return;
+          }
+          originalConsoleError.apply(console, args);
+        };
+      })();
+    </script>
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased font-sans selection:bg-amber-500/30 selection:text-amber-200">
     <div id="root"></div>

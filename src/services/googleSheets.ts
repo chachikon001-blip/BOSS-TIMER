@@ -498,22 +498,31 @@ export function convertSheetRowsToBosses(rows: string[][], fallbackServer: 'main
     const bossNumber = (isColBName && /^\d+$/.test(col0Trimmed)) ? parseInt(col0Trimmed, 10) : matchedKnownBoss?.num;
     const pinned = matchedKnownBoss?.pinned ?? (index < 3);
 
-    bossesList.push({
+    const bossObj: Boss = {
       id: `${server}-sheet-${index + 1}-${name.replace(/[^a-zA-Z0-9ก-๙]/g, '_')}`,
       name,
       server,
       serverTag,
       location,
       respawnMinutes,
-      level,
       lastKilledAt,
       nextSpawnAt,
-      killedBy: lastKilledAt ? 'Google Sheet' : undefined,
       notifiedStages: [],
       dropItems,
       pinned,
-      bossNumber,
-    });
+    };
+
+    if (level !== undefined && level !== null) {
+      bossObj.level = level;
+    }
+    if (bossNumber !== undefined && bossNumber !== null) {
+      bossObj.bossNumber = bossNumber;
+    }
+    if (lastKilledAt) {
+      bossObj.killedBy = 'Google Sheet';
+    }
+
+    bossesList.push(bossObj);
   });
 
   return bossesList;

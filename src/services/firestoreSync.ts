@@ -133,13 +133,39 @@ export function subscribeToFirestoreSheetConfig(
 }
 
 /**
+ * Strips all undefined fields recursively so Firestore never rejects documents
+ * with "Unsupported field value: undefined"
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return null as unknown as T;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        cleaned[key] = sanitizeForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return data;
+}
+
+/**
  * Save single boss to Firestore
  */
 export async function saveBossToFirestore(boss: Boss) {
   const path = `${BOSSES_COLLECTION}/${boss.id}`;
   try {
     const docRef = doc(db, BOSSES_COLLECTION, boss.id);
-    await setDoc(docRef, boss, { merge: true });
+    const cleaned = sanitizeForFirestore(boss);
+    await setDoc(docRef, cleaned, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -157,7 +183,8 @@ export async function batchSaveBossesToFirestore(bosses: Boss[]) {
       const batch = writeBatch(db);
       for (const b of chunk) {
         const docRef = doc(db, BOSSES_COLLECTION, b.id);
-        batch.set(docRef, b, { merge: true });
+        const cleaned = sanitizeForFirestore(b);
+        batch.set(docRef, cleaned, { merge: true });
       }
       await batch.commit();
     }
@@ -186,7 +213,8 @@ export async function saveUserToFirestore(user: UserAccount) {
   const path = `${USERS_COLLECTION}/${user.id}`;
   try {
     const docRef = doc(db, USERS_COLLECTION, user.id);
-    await setDoc(docRef, user, { merge: true });
+    const cleaned = sanitizeForFirestore(user);
+    await setDoc(docRef, cleaned, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -212,7 +240,8 @@ export async function saveSettingsToFirestore(settings: NotificationSettings) {
   const path = `${SETTINGS_COLLECTION}/global`;
   try {
     const docRef = doc(db, SETTINGS_COLLECTION, 'global');
-    await setDoc(docRef, settings, { merge: true });
+    const cleaned = sanitizeForFirestore(settings);
+    await setDoc(docRef, cleaned, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -225,7 +254,8 @@ export async function saveSheetConfigToFirestore(config: SheetConfig) {
   const path = `${SHEET_CONFIG_COLLECTION}/global`;
   try {
     const docRef = doc(db, SHEET_CONFIG_COLLECTION, 'global');
-    await setDoc(docRef, config, { merge: true });
+    const cleaned = sanitizeForFirestore(config);
+    await setDoc(docRef, cleaned, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
