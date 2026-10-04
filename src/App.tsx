@@ -884,12 +884,18 @@ export default function App() {
         }
         return { success: true };
       }
+      if (data.isPending || res.status === 403) {
+        return { 
+          success: false, 
+          error: data.error || '⏳ บัญชีของคุณอยู่ระหว่างรอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งาน' 
+        };
+      }
     } catch (e) {
       console.warn('Backend login attempt failed, trying local fallback:', e);
     }
 
     // Local / Firestore fallback verification
-    let found = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+    const found = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
     if (!found) {
       return { success: false, error: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' };
     }
@@ -902,11 +908,18 @@ export default function App() {
       return { success: false, error: 'รหัสผ่านไม่ถูกต้อง' };
     }
 
-    // Auto-activate user so no permission request is required
-    if (found.status === 'pending' || !found.active) {
-      found = { ...found, status: 'active', active: true };
-      saveUserToFirestore(found).catch(() => {});
-      setUsers(prev => prev.map(u => u.id === found!.id ? found! : u));
+    if (found.status === 'pending' || (!found.active && found.status !== 'rejected' && found.id !== 'admin-master')) {
+      return { 
+        success: false, 
+        error: '⏳ บัญชีของคุณอยู่ระหว่างรอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งาน กรุณาแจ้ง Admin' 
+      };
+    }
+
+    if (found.status === 'rejected' || (!found.active && found.id !== 'admin-master')) {
+      return { 
+        success: false, 
+        error: '❌ บัญชีนี้ถูกระงับหรือไม่ได้รับอนุมัติจาก Admin กรุณาติดต่อหัวหน้ากิลด์' 
+      };
     }
 
     setCurrentUser(found);
@@ -919,35 +932,24 @@ export default function App() {
   };
 
   const handleRegisterUser = async (data: { username: string; displayName: string; password?: string }): Promise<{ success: boolean; message?: string; isPending?: boolean } | boolean> => {
-    const cleanUsername = data.username.trim();
-    const cleanDisplayName = (data.displayName || data.username).trim();
-
-    // Prevent duplicate usernames or auto-login
-    const existing = users.find(u => u.username.toLowerCase() === cleanUsername.toLowerCase());
-    if (existing) {
-      if (!existing.passwordHash || existing.passwordHash === (data.password || '123456')) {
-        const activeExisting = { ...existing, active: true, status: 'active' as const };
-        setCurrentUser(activeExisting);
-        try {
-          localStorage.setItem('boss_timer_current_user', JSON.stringify(activeExisting));
-        } catch {}
-        return { success: true, isPending: false, message: `เข้าสู่ระบบสำเร็จในฐานะ ${activeExisting.displayName}!` };
-      }
-      return { success: false, message: 'ชื่อผู้ใช้นี้มีในระบบแล้ว กรุณาเข้าสู่ระบบด้วยรหัสผ่าน' };
+    // Prevent duplicate usernames
+    const exists = users.some(u => u.username.toLowerCase() === data.username.trim().toLowerCase());
+    if (exists) {
+      return { success: false, message: 'ชื่อผู้ใช้นี้มีในระบบแล้ว กรุณาเลือกชื่ออื่น' };
     }
 
     const newUser: UserAccount = {
       id: `user-${Date.now()}`,
-      username: cleanUsername,
-      displayName: cleanDisplayName,
+      username: data.username.trim(),
+      displayName: data.displayName.trim(),
       role: 'member',
       passwordHash: data.password || '123456',
-      active: true,
-      status: 'active',
+      active: false,
+      status: 'pending',
       createdAt: new Date().toISOString(),
     };
 
-    // Save to Firestore in real-time
+    // Save to Firestore in real-time so Admin sees it immediately!
     saveUserToFirestore(newUser).catch(() => {});
     setUsers((prev) => [...prev.filter(u => u.username.toLowerCase() !== newUser.username.toLowerCase()), newUser]);
 
@@ -955,20 +957,14 @@ export default function App() {
       await fetch(getApiUrl('/api/users/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, role: 'member', createdByAdmin: true }),
+        body: JSON.stringify({ ...data, role: 'member', createdByAdmin: false }),
       });
-    } catch {}
-
-    // Auto-login immediately! No permission request needed!
-    setCurrentUser(newUser);
-    try {
-      localStorage.setItem('boss_timer_current_user', JSON.stringify(newUser));
     } catch {}
 
     return { 
       success: true, 
-      isPending: false,
-      message: `สร้าง ID และเข้าสู่ระบบเรียบร้อยแล้ว ยินดีต้อนรับ ${cleanDisplayName}!` 
+      isPending: true,
+      message: 'ส่งคำขอลงทะเบียนสำเร็จ! กรุณารอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งานก่อนเข้าสู่ระบบ' 
     };
   };
 

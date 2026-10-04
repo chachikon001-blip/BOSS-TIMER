@@ -93,15 +93,18 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
 
       if (typeof res === 'object') {
         if (res.success) {
-          setSuccessMsg(res.message || 'สร้าง ID และเข้าสู่ระบบเรียบร้อยแล้ว!');
-          // Auto login immediately
-          await onLogin(regUsername, password);
+          setSuccessMsg(res.message || 'ส่งคำขอลงทะเบียนเรียบร้อยแล้ว! กรุณารอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งาน');
+          setMode('login');
+          setUsername(regUsername);
+          setPassword('');
         } else {
           setErrorMsg(res.message || 'ไม่สามารถลงทะเบียนได้ ชื่อผู้ใช้นี้อาจมีในระบบแล้ว');
         }
       } else if (res) {
-        setSuccessMsg('สร้าง ID และเข้าสู่ระบบเรียบร้อยแล้ว!');
-        await onLogin(regUsername, password);
+        setSuccessMsg('ส่งคำขอลงทะเบียนเรียบร้อยแล้ว! กรุณารอหัวหน้ากิลด์ (Admin) อนุมัติการเข้าใช้งาน');
+        setMode('login');
+        setUsername(regUsername);
+        setPassword('');
       } else {
         setErrorMsg('ไม่สามารถลงทะเบียนได้ ชื่อผู้ใช้นี้อาจมีในระบบแล้ว');
       }
@@ -316,10 +319,10 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
             </form>
           ) : (
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
-              <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <div className="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>เข้าใช้งานได้ทันที:</strong> ไม่ต้องรอขอสิทธิ์หรือรอแอดมินอนุมัติ เพียงตั้งชื่อ ID และรหัสผ่านก็เข้าดูและจัดการเวลาบอสได้ทันที
+                  <strong>การสมัครต้องรอ Admin อนุมัติ:</strong> เมื่อส่งคำขอแล้ว หัวหน้ากิลด์ (Admin) จะได้รับคำขอและกดอนุมัติ ID ของคุณก่อนเข้าใช้งาน
                 </span>
               </div>
 
@@ -395,12 +398,12 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
                 {loading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>กำลังเข้าสู่ระบบ...</span>
+                    <span>กำลังส่งคำขอ...</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4" />
-                    <span>สร้าง ID และเข้าใช้งานทันที (ไม่ต้องรออนุมัติ)</span>
+                    <Clock className="w-4 h-4" />
+                    <span>ส่งคำขอลงทะเบียน (รอ Admin อนุมัติ)</span>
                   </>
                 )}
               </button>
