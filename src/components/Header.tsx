@@ -16,7 +16,8 @@ import {
   VolumeX,
   RotateCcw,
   Share2,
-  Check
+  Check,
+  Settings
 } from 'lucide-react';
 import { UserAccount } from '../types/boss';
 import { getLiveShareUrl } from '../services/apiConfig';
@@ -146,58 +147,14 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Share Live Link Button */}
-            <button
-              onClick={handleCopyShareLink}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition active:scale-95 ${
-                copiedShare
-                  ? 'bg-emerald-900/60 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20'
-                  : 'bg-sky-950/70 hover:bg-sky-900/90 text-sky-300 border-sky-500/40 hover:border-sky-400/60'
-              }`}
-              title="คัดลอกลิงก์กิลด์นี้ให้เพื่อน เพื่อให้เวลาบอสซิงค์ตรงกัน 100%"
-            >
-              {copiedShare ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>คัดลอกลิงก์แล้ว!</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-3.5 h-3.5 text-sky-400" />
-                  <span className="hidden sm:inline">แชร์ให้เพื่อน</span>
-                </>
-              )}
-            </button>
-
-            {/* Google Sheets Modal Button */}
-            <button
-              onClick={onOpenSheets}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/30 text-xs font-medium transition"
-              title="Google Sheets ซิงค์ข้อมูล"
-            >
-              <TableProperties className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Google ชีต</span>
-            </button>
-
-            {/* Server Reboot Button */}
-            {onOpenReboot && (
-              <button
-                onClick={onOpenReboot}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/10 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition shadow-sm shadow-amber-500/10 active:scale-95"
-                title="รีเซ็ตเวลาบอสตามเวลาเซิร์ฟเวอร์รีบูท (ช่อง P)"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-                <span>รีบูทเซิร์ฟ</span>
-              </button>
-            )}
-
-            {/* Notification & Settings */}
+            {/* Main Settings Button (Includes Google Sheets, Reboot, Share, Sound & Webhooks) */}
             <button
               onClick={onOpenSettings}
-              className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-orange-400 transition border border-slate-700/60"
-              title="การตั้งค่าการแจ้งเตือน (Discord, LINE, เสียง)"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-slate-700 hover:border-amber-500/50 text-xs font-bold transition shadow-sm active:scale-95"
+              title="เปิดเมนูการตั้งค่า (Google Sheets, รีบูทเซิร์ฟ, แชร์ลิงก์, เสียงแจ้งเตือน, Webhook)"
             >
-              <Bell className="w-4 h-4" />
+              <Settings className="w-4 h-4 text-amber-400" />
+              <span>ตั้งค่า</span>
             </button>
 
             {/* Admin Management (if admin) */}

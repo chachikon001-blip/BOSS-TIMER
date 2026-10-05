@@ -13,8 +13,10 @@ export const DEFAULT_SHEET_CONFIG: SheetConfig = {
 export const DEFAULT_SETTINGS: NotificationSettings = {
   enabled: true,
   notifyAtMinutes: [10, 5, 3, 1],
-  soundType: 'synth_chime',
+  soundType: 'tts_thai',
   soundVolume: 0.8,
+  ttsLanguage: 'thai_only',
+  ttsSpeed: 1.05,
   discordWebhookUrl: '',
   discordEnabled: true,
   lineWebhookUrl: '',

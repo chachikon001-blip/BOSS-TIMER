@@ -330,19 +330,6 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
               <LayoutGrid className="w-4 h-4" />
             </button>
           </div>
-
-          {/* Server Reboot Button */}
-          {onOpenReboot && (
-            <button
-              type="button"
-              onClick={onOpenReboot}
-              className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/10 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-bold transition shadow-sm shadow-amber-500/10 active:scale-95 whitespace-nowrap"
-              title="รีเซ็ตเวลาบอสทั้งหมดตามเวลาเซิร์ฟเวอร์รีบูท (ช่อง P)"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-              <span>⚡ รีบูทเซิร์ฟ</span>
-            </button>
-          )}
         </div>
       </div>
     </div>

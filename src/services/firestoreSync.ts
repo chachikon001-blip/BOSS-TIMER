@@ -6,7 +6,8 @@ import {
   deleteDoc, 
   onSnapshot, 
   writeBatch,
-  getDocs
+  getDocs,
+  getDoc
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { Boss, UserAccount, NotificationSettings, SheetConfig } from '../types/boss';
@@ -308,8 +309,19 @@ export async function seedFirestoreIfEmpty(
       }
     }
 
-    await saveSettingsToFirestore(defaultSettings);
-    await saveSheetConfigToFirestore(defaultSheetConfig);
+    // Only seed settings if document does NOT already exist!
+    const settingsDoc = await getDoc(doc(db, SETTINGS_COLLECTION, 'global'));
+    if (!settingsDoc.exists()) {
+      console.log('Seeding initial settings to Firestore...');
+      await saveSettingsToFirestore(defaultSettings);
+    }
+
+    // Only seed sheetConfig if document does NOT already exist!
+    const sheetDoc = await getDoc(doc(db, SHEET_CONFIG_COLLECTION, 'global'));
+    if (!sheetDoc.exists()) {
+      console.log('Seeding initial sheetConfig to Firestore...');
+      await saveSheetConfigToFirestore(defaultSheetConfig);
+    }
   } catch (err) {
     console.warn('Firestore seeding notice:', err);
   }

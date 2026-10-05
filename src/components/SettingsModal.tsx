@@ -13,15 +13,25 @@ import {
   Save, 
   Sliders,
   Languages,
-  Server
+  Server,
+  Share2,
+  TableProperties,
+  RotateCcw,
+  Check,
+  Copy,
+  Wrench,
+  ExternalLink
 } from 'lucide-react';
 import { playBossAlert } from '../services/audio';
+import { getLiveShareUrl } from '../services/apiConfig';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: NotificationSettings;
   onSave: (newSettings: NotificationSettings) => void;
+  onOpenSheets?: () => void;
+  onOpenReboot?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -29,11 +39,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   settings,
   onSave,
+  onOpenSheets,
+  onOpenReboot,
 }) => {
   const [localSettings, setLocalSettings] = useState<NotificationSettings>({ ...settings });
-  const [activeTab, setActiveTab] = useState<'audio' | 'discord' | 'line' | 'server'>('audio');
+  const [activeTab, setActiveTab] = useState<'tools' | 'audio' | 'server' | 'discord' | 'line'>('tools');
+  const [copiedShareLink, setCopiedShareLink] = useState(false);
   const [testDiscordStatus, setTestDiscordStatus] = useState<{ loading: boolean; msg?: string; success?: boolean }>({ loading: false });
   const [testLineStatus, setTestLineStatus] = useState<{ loading: boolean; msg?: string; success?: boolean }>({ loading: false });
+
+  // Sync state ONLY when modal transitions to open (do not overwrite while user is modifying settings!)
+  React.useEffect(() => {
+    if (isOpen) {
+      setLocalSettings({ ...settings });
+    }
+  }, [isOpen]);
+
+  const handleCopyShare = async () => {
+    try {
+      const url = getLiveShareUrl();
+      await navigator.clipboard.writeText(url);
+      setCopiedShareLink(true);
+      setTimeout(() => setCopiedShareLink(false), 3000);
+    } catch {
+      // fallback
+    }
+  };
 
   const handleStageToggle = (stage: number) => {
     const stages = localSettings.notifyAtMinutes || [10, 5, 3, 1];
@@ -78,6 +109,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       localSettings.ttsLanguage || 'thai_only',
       localSettings.ttsSpeed || 1.05
     );
+  };
+
+  const handleSelectSoundType = (typeId: any) => {
+    const updated = { ...localSettings, soundType: typeId };
+    setLocalSettings(updated);
+    // Auto-save immediately so selection is permanently stored
+    onSave(updated);
+    try {
+      localStorage.setItem('boss_timer_settings', JSON.stringify(updated));
+    } catch {}
+    // Instant audio preview
+    playBossAlert(
+      typeId,
+      updated.soundVolume,
+      updated.customSoundUrl,
+      { 
+        name: 'เทมเพสต์ - Valefar', 
+        server: 'main', 
+        serverTag: updated.mainServerTag || 'T3', 
+        minutesLeft: 5 
+      },
+      updated.ttsLanguage || 'thai_only',
+      updated.ttsSpeed || 1.05
+    );
+  };
+
+  const handleSaveDirectly = (overrideSettings?: NotificationSettings) => {
+    const toSave = overrideSettings || localSettings;
+    onSave(toSave);
+    onClose();
   };
 
   const handleTestDiscord = async () => {
@@ -150,9 +211,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl max-h-[88vh] shadow-2xl flex flex-col overflow-hidden">
+        {/* Header (Fixed) */}
+        <div className="flex items-center justify-between p-4 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
             <Bell className="w-5 h-5 text-orange-400" />
             <h2 className="text-base font-bold text-slate-100">การตั้งค่าการแจ้งเตือน</h2>
@@ -165,8 +226,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        {/* Global Alert Timing (10, 5, 3, 1 min) */}
-        <div className="p-4 bg-slate-950/60 border-b border-slate-800/80 space-y-2">
+        {/* Global Alert Timing (10, 5, 3, 1 min) (Fixed) */}
+        <div className="p-3.5 sm:p-4 bg-slate-950/60 border-b border-slate-800/80 space-y-2 shrink-0">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-200">
               ⏱️ แจ้งเตือนล่วงหน้าก่อนบอสเกิด (นาที):
@@ -194,11 +255,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        {/* Sub-tabs */}
-        <div className="flex border-b border-slate-800 bg-slate-950 px-4">
+        {/* Sub-tabs (Fixed) */}
+        <div className="flex border-b border-slate-800 bg-slate-950 px-4 shrink-0 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('tools')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition shrink-0 ${
+              activeTab === 'tools'
+                ? 'border-amber-500 text-amber-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            <span>เครื่องมือ & จัดการ (ชีต/รีบูท/แชร์)</span>
+          </button>
+
           <button
             onClick={() => setActiveTab('audio')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition shrink-0 ${
               activeTab === 'audio'
                 ? 'border-amber-500 text-amber-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -209,8 +282,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('server')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition shrink-0 ${
+              activeTab === 'server'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Server className="w-3.5 h-3.5" />
+            <span>รหัสเซิร์ฟเวอร์</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('discord')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition shrink-0 ${
               activeTab === 'discord'
                 ? 'border-indigo-500 text-indigo-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -222,7 +307,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <button
             onClick={() => setActiveTab('line')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition shrink-0 ${
               activeTab === 'line'
                 ? 'border-emerald-500 text-emerald-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -231,28 +316,134 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <Send className="w-3.5 h-3.5" />
             <span>LINE แจ้งเตือน</span>
           </button>
-
-          <button
-            onClick={() => setActiveTab('server')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
-              activeTab === 'server'
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Server className="w-3.5 h-3.5" />
-            <span>รหัสเซิร์ฟเวอร์</span>
-          </button>
         </div>
 
-        {/* Tab Content */}
-        <div className="p-4 sm:p-6 space-y-4 flex-1">
+        {/* Tab Content (Scrollable) */}
+        <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto">
+          {/* 1. Tools Tab (Google Sheets, Reboot Server, Share Link) */}
+          {activeTab === 'tools' && (
+            <div className="space-y-4">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200">
+                ✨ รวมเครื่องมือหลักและบริการทั้งหมดไว้ที่นี่ เพื่อความสะดวกในการจัดการกิลด์
+              </div>
+
+              {/* Tool 1: Google Sheets */}
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 hover:border-emerald-500/40 transition">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      <TableProperties className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
+                        <span>Google Sheets (ซิงค์ & คัดลอกช่อง A-F)</span>
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        ซิงค์ข้อมูลกับ Google Sheet, นำเข้าบอส, และคัดลอกตารางช่อง A-F พร้อมสีไปวาง
+                      </p>
+                    </div>
+                  </div>
+                  {onOpenSheets && (
+                    <button
+                      type="button"
+                      onClick={onOpenSheets}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/30 shrink-0 active:scale-95"
+                    >
+                      <TableProperties className="w-4 h-4" />
+                      <span>เปิด Google Sheets</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Tool 2: Server Reboot */}
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 hover:border-amber-500/40 transition">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      <RotateCcw className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
+                        <span>รีบูทเซิร์ฟเวอร์ (Server Reboot - ช่อง P)</span>
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        คำนวณและรีเซ็ตเวลาเกิดใหม่ของบอสทั้งเซิร์ฟเวอร์อัตโนมัติ ตามเวลาเปิดเซิร์ฟใหม่
+                      </p>
+                    </div>
+                  </div>
+                  {onOpenReboot && (
+                    <button
+                      type="button"
+                      onClick={onOpenReboot}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-600/30 shrink-0 active:scale-95"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>เปิดรีบูทเซิร์ฟเวอร์</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Tool 3: Share Live Link */}
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 hover:border-sky-500/40 transition">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2.5 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                    <Share2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
+                      <span>แชร์ลิงก์ให้เพื่อนในกิลด์ (Live Sync)</span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      ทุกคนที่เปิดลิงก์นี้จะเห็นเวลาบอส อัปเดตและแจ้งเตือนซิงค์ตรงกันแบบเรียลไทม์
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    readOnly
+                    value={getLiveShareUrl()}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-slate-300 select-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyShare}
+                    className={`w-full sm:w-auto px-4 py-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 active:scale-95 ${
+                      copiedShareLink
+                        ? 'bg-emerald-900/60 text-emerald-200 border-emerald-500/60 shadow-sm'
+                        : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-500 shadow-md shadow-sky-600/30'
+                    }`}
+                  >
+                    {copiedShareLink ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>คัดลอกสำเร็จ!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-white" />
+                        <span>คัดลอกลิงก์</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {activeTab === 'audio' && (
             <div className="space-y-4">
               {/* Sound Type Selection */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2">เลือกสไตล์เสียงแจ้งเตือน</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    เลือกสไตล์เสียงแจ้งเตือน (คลิกเพื่อทดลองฟังทันที)
+                  </label>
+                  <span className="text-[10px] text-amber-400">คลิกที่ปุ่มเพื่อทดสอบเสียง</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {[
                     { id: 'synth_chime', label: 'กระดิ่งสังเคราะห์ (Synth Chime)', desc: 'เสียงใส นุ่มนวล ไม่แสบหู' },
                     { id: 'tts_thai', label: '🗣️ เสียงพูดภาษาไทย (Thai TTS)', desc: 'พูดชื่อบอสและเวลานาทีชัดเจน' },
@@ -260,21 +451,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     { id: 'horn', label: 'แตรสัญญาณ (Fanfare Horn)', desc: 'เสียงแตรชัยชนะ อลังการ' },
                     { id: '8bit', label: 'เกมเรโทร 8-Bit', desc: 'คลาสสิกเกมตลับ RPG' },
                     { id: 'sci_fi', label: 'ไฮเทค ไซไฟ (Sci-Fi Pulse)', desc: 'ล้ำสมัย แบบเรดาร์' },
-                  ].map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setLocalSettings({ ...localSettings, soundType: s.id as any })}
-                      className={`p-3 rounded-xl border text-left transition ${
-                        localSettings.soundType === s.id
-                          ? 'bg-amber-500/10 border-amber-500 text-amber-200'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-xs font-bold text-slate-200">{s.label}</div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">{s.desc}</div>
-                    </button>
-                  ))}
+                  ].map((s) => {
+                    const isSelected = localSettings.soundType === s.id;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => handleSelectSoundType(s.id as any)}
+                        className={`p-3 rounded-xl border text-left transition flex items-start justify-between gap-2 cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-500/15 border-amber-500 text-amber-200 shadow-md shadow-amber-500/10 ring-1 ring-amber-500/40'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
+                        }`}
+                      >
+                        <div>
+                          <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                            <span>{s.label}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">{s.desc}</div>
+                        </div>
+                        {isSelected && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-slate-950 shrink-0">
+                            เลือกอยู่ ✓
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -294,7 +497,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <button
                       type="button"
-                      onClick={() => setLocalSettings({ ...localSettings, ttsLanguage: 'thai_only' })}
+                      onClick={() => {
+                        const updated = { ...localSettings, ttsLanguage: 'thai_only' as const };
+                        setLocalSettings(updated);
+                        playBossAlert('tts_thai', updated.soundVolume, undefined, {
+                          name: 'เทมเพสต์ - Valefar',
+                          server: 'main',
+                          serverTag: updated.mainServerTag || 'T3',
+                          minutesLeft: 5,
+                        }, 'thai_only', updated.ttsSpeed || 1.05);
+                      }}
                       className={`p-2.5 rounded-lg border text-left transition ${
                         (localSettings.ttsLanguage || 'thai_only') === 'thai_only'
                           ? 'bg-amber-500/20 border-amber-500 text-amber-200 shadow-sm'
@@ -310,7 +522,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => setLocalSettings({ ...localSettings, ttsLanguage: 'english_only' })}
+                      onClick={() => {
+                        const updated = { ...localSettings, ttsLanguage: 'english_only' as const };
+                        setLocalSettings(updated);
+                        playBossAlert('tts_thai', updated.soundVolume, undefined, {
+                          name: 'เทมเพสต์ - Valefar',
+                          server: 'main',
+                          serverTag: updated.mainServerTag || 'T3',
+                          minutesLeft: 5,
+                        }, 'english_only', updated.ttsSpeed || 1.05);
+                      }}
                       className={`p-2.5 rounded-lg border text-left transition ${
                         localSettings.ttsLanguage === 'english_only'
                           ? 'bg-amber-500/20 border-amber-500 text-amber-200 shadow-sm'
@@ -326,7 +547,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => setLocalSettings({ ...localSettings, ttsLanguage: 'all' })}
+                      onClick={() => {
+                        const updated = { ...localSettings, ttsLanguage: 'all' as const };
+                        setLocalSettings(updated);
+                        playBossAlert('tts_thai', updated.soundVolume, undefined, {
+                          name: 'เทมเพสต์ - Valefar',
+                          server: 'main',
+                          serverTag: updated.mainServerTag || 'T3',
+                          minutesLeft: 5,
+                        }, 'all', updated.ttsSpeed || 1.05);
+                      }}
                       className={`p-2.5 rounded-lg border text-left transition ${
                         localSettings.ttsLanguage === 'all'
                           ? 'bg-amber-500/20 border-amber-500 text-amber-200 shadow-sm'
@@ -341,29 +571,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Speech Rate Control */}
-                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                    <span className="text-slate-400">ความเร็วเสียงพูด:</span>
-                    <div className="flex gap-1.5">
-                      {[
-                        { speed: 0.95, label: '0.95x ช้า' },
-                        { speed: 1.05, label: '1.05x ปกติ' },
-                        { speed: 1.2, label: '1.20x เร็ว' },
-                      ].map((item) => (
-                        <button
-                          key={item.speed}
-                          type="button"
-                          onClick={() => setLocalSettings({ ...localSettings, ttsSpeed: item.speed })}
-                          className={`px-2 py-1 rounded text-[11px] font-medium border transition ${
-                            (localSettings.ttsSpeed || 1.05) === item.speed
-                              ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
+                  {/* Speech Rate Control & Quick Save */}
+                  <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400">ความเร็วเสียงพูด:</span>
+                      <div className="flex gap-1.5">
+                        {[
+                          { speed: 0.95, label: '0.95x ช้า' },
+                          { speed: 1.05, label: '1.05x ปกติ' },
+                          { speed: 1.2, label: '1.20x เร็ว' },
+                        ].map((item) => (
+                          <button
+                            key={item.speed}
+                            type="button"
+                            onClick={() => {
+                              const updated = { ...localSettings, ttsSpeed: item.speed };
+                              setLocalSettings(updated);
+                              handleTestSound();
+                            }}
+                            className={`px-2 py-1 rounded text-[11px] font-medium border transition ${
+                              (localSettings.ttsSpeed || 1.05) === item.speed
+                                ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSaveDirectly(localSettings)}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/30 text-xs ml-auto transition"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>บันทึกและใช้เสียงพูดทันที</span>
+                    </button>
                   </div>
                 </div>
               )}
@@ -613,21 +858,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/40 flex items-center justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
-          >
-            ยกเลิก
-          </button>
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md shadow-amber-600/30"
-          >
-            <Save className="w-4 h-4" />
-            <span>บันทึกการตั้งค่า</span>
-          </button>
+        {/* Footer (Fixed at bottom) */}
+        <div className="p-3 sm:p-4 border-t border-slate-800 bg-slate-950 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-slate-400">เสียงที่เลือก:</span>
+            <span className="font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+              {localSettings.soundType === 'tts_thai' 
+                ? '🗣️ เสียงพูดภาษาไทย' 
+                : localSettings.soundType === 'synth_chime' 
+                ? 'กระดิ่งสังเคราะห์' 
+                : localSettings.soundType === 'warning_siren'
+                ? 'ไซเรนเตือนภัย'
+                : localSettings.soundType === 'horn'
+                ? 'แตรสัญญาณ'
+                : localSettings.soundType === '8bit'
+                ? 'เกมเรโทร 8-Bit'
+                : localSettings.soundType === 'sci_fi'
+                ? 'ไฮเทค ไซไฟ'
+                : 'ไฟล์เสียงของตัวเอง'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleTestSound}
+              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
+              title="ทดสอบฟังเสียงที่เลือกตอนนี้"
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>ทดลองฟัง</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-lg shadow-amber-600/40 transition active:scale-95"
+            >
+              <Save className="w-4 h-4" />
+              <span>บันทึกการตั้งค่า</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

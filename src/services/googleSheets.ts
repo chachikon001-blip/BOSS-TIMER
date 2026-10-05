@@ -591,10 +591,21 @@ export async function writeRebootTimeToGoogleSheet(
 }
 
 /**
- * Sorts bosses to match the Google Sheet row structure (e.g., Felis on row 2, Valefar on row 3, etc.)
+ * Sorts bosses for sheet export.
+ * Defaults to sorting by bossNumber (1, 2, 3... 45) ascending as requested by user!
  */
-export function sortBossesForSheet(bossList: Boss[]): Boss[] {
+export function sortBossesForSheet(
+  bossList: Boss[],
+  sortBy: 'bossNumber' | 'sheetRow' = 'bossNumber'
+): Boss[] {
   return [...bossList].sort((a, b) => {
+    if (sortBy === 'bossNumber') {
+      const numA = a.bossNumber !== undefined ? a.bossNumber : 999;
+      const numB = b.bossNumber !== undefined ? b.bossNumber : 999;
+      if (numA !== numB) return numA - numB;
+      return (a.name || '').localeCompare(b.name || '', 'th');
+    }
+
     const infoA = getBossColorInfo(a);
     const infoB = getBossColorInfo(b);
     const rowA = a.sheetRowIndex ?? infoA.sheetRow ?? 999;
@@ -606,29 +617,34 @@ export function sortBossesForSheet(bossList: Boss[]): Boss[] {
 
 /**
  * Returns formatted sheet rows along with background color for each row
+ * onlyColAtoF: When true, only returns Col A to F (ลำดับ, Name, Hr., วันที่ตาย, ชม, นาที)
+ * to avoid overwriting Google Sheets formulas in Col G-L!
  */
 export function buildSheetRowsWithColors(
   bossList: Boss[],
-  includeHeader: boolean = false
+  includeHeader: boolean = false,
+  onlyColAtoF: boolean = true
 ): { cells: (string | number)[]; color: string; spawnChance?: number }[] {
   const result: { cells: (string | number)[]; color: string; spawnChance?: number }[] = [];
 
   if (includeHeader) {
     result.push({
-      cells: [
-        '',
-        'Name',
-        'Hr.',
-        'วันที่ตาย',
-        'ชม',
-        'นาที',
-        'Update',
-        'Respawn GMT+7',
-        'Respawn GMT+8',
-        'เรียงบอส',
-        'วันที่เเละเวลาเกิดของบอส',
-        'SV.',
-      ],
+      cells: onlyColAtoF
+        ? ['', 'Name', 'Hr.', 'วันที่ตาย', 'ชม', 'นาที']
+        : [
+            '',
+            'Name',
+            'Hr.',
+            'วันที่ตาย',
+            'ชม',
+            'นาที',
+            'Update',
+            'Respawn GMT+7',
+            'Respawn GMT+8',
+            'เรียงบอส',
+            'วันที่เเละเวลาเกิดของบอส',
+            'SV.',
+          ],
       color: '#ffffff',
     });
   }
@@ -669,56 +685,69 @@ export function buildSheetRowsWithColors(
       }
     }
 
-    if (b.nextSpawnAt) {
-      const sp = new Date(b.nextSpawnAt);
-      if (!isNaN(sp.getTime())) {
-        const diffMinutes = Math.round((sp.getTime() - nowMs) / 60000);
-        minutesLeftStr = diffMinutes.toString();
+    if (!onlyColAtoF) {
+      if (b.nextSpawnAt) {
+        const sp = new Date(b.nextSpawnAt);
+        if (!isNaN(sp.getTime())) {
+          const diffMinutes = Math.round((sp.getTime() - nowMs) / 60000);
+          minutesLeftStr = diffMinutes.toString();
 
-        respawnGmt7 = sp.toLocaleTimeString('th-TH', {
-          timeZone: 'Asia/Bangkok',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        });
+          respawnGmt7 = sp.toLocaleTimeString('th-TH', {
+            timeZone: 'Asia/Bangkok',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          });
 
-        respawnGmt8 = sp.toLocaleTimeString('en-US', {
-          timeZone: 'Asia/Singapore',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        });
+          respawnGmt8 = sp.toLocaleTimeString('en-US', {
+            timeZone: 'Asia/Singapore',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          });
 
-        const spParts = new Intl.DateTimeFormat('en-GB', {
-          timeZone: 'Asia/Bangkok',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        }).formatToParts(sp);
+          const spParts = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Asia/Bangkok',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          }).formatToParts(sp);
 
-        const getSp = (type: string) => spParts.find(p => p.type === type)?.value || '';
-        fullSpawnStr = `${getSp('day')}/${getSp('month')}/${getSp('year')} ${getSp('hour')}:${getSp('minute')}`;
+          const getSp = (type: string) => spParts.find(p => p.type === type)?.value || '';
+          fullSpawnStr = `${getSp('day')}/${getSp('month')}/${getSp('year')} ${getSp('hour')}:${getSp('minute')}`;
+        }
       }
     }
 
+    const cells = onlyColAtoF
+      ? [
+          bossNum,        // Col A: ลำดับบอส
+          b.name,         // Col B: Name
+          respawnHours,   // Col C: Hr.
+          deathDateStr,   // Col D: วันที่ตาย
+          deathHourStr,   // Col E: ชม
+          deathMinStr,    // Col F: นาที
+        ]
+      : [
+          bossNum,        // Col A: ลำดับบอส
+          b.name,         // Col B: Name
+          respawnHours,   // Col C: Hr.
+          deathDateStr,   // Col D: วันที่ตาย
+          deathHourStr,   // Col E: ชม
+          deathMinStr,    // Col F: นาที
+          'FALSE',        // Col G: Update
+          respawnGmt7,    // Col H: Respawn GMT+7
+          respawnGmt8,    // Col I: Respawn GMT+8
+          minutesLeftStr, // Col J: เรียงบอส
+          fullSpawnStr,   // Col K: วันที่เเละเวลาเกิดของบอส
+          serverLabel,    // Col L: SV.
+        ];
+
     result.push({
-      cells: [
-        bossNum,
-        b.name,
-        respawnHours,
-        deathDateStr,
-        deathHourStr,
-        deathMinStr,
-        'FALSE',
-        respawnGmt7,
-        respawnGmt8,
-        minutesLeftStr,
-        fullSpawnStr,
-        serverLabel,
-      ],
+      cells,
       color: b.spawnColor || colorInfo.spawnColor || '#ffffff',
       spawnChance: b.spawnChance ?? colorInfo.spawnChance,
     });
@@ -733,10 +762,12 @@ export function buildSheetRowsWithColors(
  */
 export function buildSheetHTMLTable(
   bossList: Boss[],
-  includeHeader: boolean = false
+  includeHeader: boolean = false,
+  onlyColAtoF: boolean = true,
+  sortBy: 'bossNumber' | 'sheetRow' = 'bossNumber'
 ): string {
-  const sorted = sortBossesForSheet(bossList);
-  const rows = buildSheetRowsWithColors(sorted, includeHeader);
+  const sorted = sortBossesForSheet(bossList, sortBy);
+  const rows = buildSheetRowsWithColors(sorted, includeHeader, onlyColAtoF);
 
   let html = '<meta charset="utf-8">';
   html += '<table style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10pt;">';
@@ -767,11 +798,13 @@ export function buildSheetHTMLTable(
 export function exportBossesToClipboardText(
   bosses: Boss[], 
   server: 'main' | 'sub' | 'all' = 'all',
-  includeHeader: boolean = false
+  includeHeader: boolean = false,
+  onlyColAtoF: boolean = true,
+  sortBy: 'bossNumber' | 'sheetRow' = 'bossNumber'
 ): string {
   const filtered = server === 'all' ? bosses : bosses.filter((b) => b.server === server);
-  const sorted = sortBossesForSheet(filtered);
-  const rows = buildSheetRowsWithColors(sorted, includeHeader).map(r => r.cells);
+  const sorted = sortBossesForSheet(filtered, sortBy);
+  const rows = buildSheetRowsWithColors(sorted, includeHeader, onlyColAtoF).map(r => r.cells);
   return rows
     .map(row => row.map(val => String(val ?? '').replace(/\t/g, ' ')).join('\t'))
     .join('\n');
@@ -779,16 +812,19 @@ export function exportBossesToClipboardText(
 
 /**
  * Copies bosses data to clipboard with full HTML formatting and colors for pasting at cell A2!
+ * Defaults to Col A-F only and sorting by bossNumber (1, 2, 3...) as requested!
  */
 export async function copyBossesForSheet(
   bosses: Boss[],
   server: 'main' | 'sub' | 'all' = 'all',
-  includeHeader: boolean = false
+  includeHeader: boolean = false,
+  onlyColAtoF: boolean = true,
+  sortBy: 'bossNumber' | 'sheetRow' = 'bossNumber'
 ): Promise<boolean> {
   const filtered = server === 'all' ? bosses : bosses.filter((b) => b.server === server);
-  const sorted = sortBossesForSheet(filtered);
-  const tsvText = exportBossesToClipboardText(sorted, 'all', includeHeader);
-  const htmlTable = buildSheetHTMLTable(sorted, includeHeader);
+  const sorted = sortBossesForSheet(filtered, sortBy);
+  const tsvText = exportBossesToClipboardText(sorted, 'all', includeHeader, onlyColAtoF, sortBy);
+  const htmlTable = buildSheetHTMLTable(sorted, includeHeader, onlyColAtoF, sortBy);
 
   try {
     if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {

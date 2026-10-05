@@ -58,6 +58,10 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   const [copiedServer, setCopiedServer] = useState<'main' | 'sub' | 'all' | null>(null);
   // Default to false because user pastes starting at cell A2
   const [includeHeaderInCopy, setIncludeHeaderInCopy] = useState<boolean>(false);
+  // Default to true: Copy only columns A to F (A:ลำดับ, B:ชื่อ, C:Hr, D:วันที่ตาย, E:ชม, F:นาที)
+  const [onlyColAtoF, setOnlyColAtoF] = useState<boolean>(true);
+  // Default to 'bossNumber': Sort by boss number ascending (1, 2, 3...)
+  const [sortByOption, setSortByOption] = useState<'bossNumber' | 'sheetRow'>('bossNumber');
 
   // Check auth state on load
   React.useEffect(() => {
@@ -192,14 +196,16 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   // Copy formatted data with colors to clipboard for instant pasting (Ctrl+V) into Google Sheets
   const handleCopyForSheet = async (server: 'main' | 'sub' | 'all') => {
     try {
-      await copyBossesForSheet(bosses, server, includeHeaderInCopy);
+      await copyBossesForSheet(bosses, server, includeHeaderInCopy, onlyColAtoF, sortByOption);
       setCopiedServer(server);
       setTimeout(() => setCopiedServer(null), 3500);
       const serverLabel = server === 'all' ? 'ทั้ง 2 เซิร์ฟ' : server === 'main' ? 'เซิร์ฟหลัก' : 'เซิร์ฟรอง';
       const targetCell = includeHeaderInCopy ? 'A1' : 'A2';
+      const colRange = onlyColAtoF ? 'คอลัมน์ A ถึง F (ไม่ทับสูตรชีต)' : 'คอลัมน์ A ถึง L';
+      const sortDesc = sortByOption === 'bossNumber' ? 'เรียงตามเลขบอส' : 'เรียงตามแถวชีต';
       setStatusMsg({
         type: 'success',
-        text: `📋 คัดลอกตารางข้อมูล (${serverLabel}) พร้อมสีพื้นหลังเรียบร้อยแล้ว! สามารถกดที่ช่อง ${targetCell} ใน Google Sheet แล้วกดวาง (Ctrl+V) ได้ทันที (สีจะตรงกับชีตเป๊ะๆ)`,
+        text: `📋 คัดลอกตารางข้อมูล ${colRange} (${serverLabel} - ${sortDesc}) พร้อมสีพื้นหลังเรียบร้อยแล้ว! สามารถกดที่ช่อง ${targetCell} ใน Google Sheet แล้วกดวาง (Ctrl+V) ได้ทันที`,
       });
     } catch {
       setStatusMsg({ type: 'error', text: 'ไม่สามารถคัดลอกข้อมูลลงคลิปบอร์ดได้ กรุณาลองใหม่อีกครั้ง' });
@@ -563,17 +569,64 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                 <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
                   <Copy className="w-3.5 h-3.5 text-amber-400" />
-                  <span>คัดลอกตารางข้อมูล (นำไปวาง Ctrl+V บน Google Sheet ได้ทันที):</span>
+                  <span>คัดลอกข้อมูลไปวางชีต (ช่อง A-F พร้อมสี):</span>
                 </span>
-                <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={includeHeaderInCopy}
-                    onChange={(e) => setIncludeHeaderInCopy(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 focus:ring-offset-0 w-3.5 h-3.5 cursor-pointer"
-                  />
-                  <span>{includeHeaderInCopy ? 'รวมหัวตาราง (วางช่อง A1)' : 'เฉพาะข้อมูลบอส (วางช่อง A2)'}</span>
-                </label>
+                
+                {/* Options row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Option: A-F vs All */}
+                  <label className="inline-flex items-center gap-1.5 text-[11px] text-amber-400/90 cursor-pointer select-none bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-500/30">
+                    <input
+                      type="checkbox"
+                      checked={onlyColAtoF}
+                      onChange={(e) => setOnlyColAtoF(e.target.checked)}
+                      className="rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 focus:ring-offset-0 w-3.5 h-3.5 cursor-pointer"
+                    />
+                    <span>{onlyColAtoF ? 'คัดเฉพาะช่อง A - F (ไม่ทับสูตรชีต)' : 'คัดทุกช่อง A - L'}</span>
+                  </label>
+
+                  {/* Option: Header row */}
+                  <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={includeHeaderInCopy}
+                      onChange={(e) => setIncludeHeaderInCopy(e.target.checked)}
+                      className="rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 focus:ring-offset-0 w-3.5 h-3.5 cursor-pointer"
+                    />
+                    <span>{includeHeaderInCopy ? 'วางช่อง A1 (มีหัว)' : 'วางช่อง A2 (ข้อมูลบอส)'}</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Sort Order Selector */}
+              <div className="flex items-center justify-between bg-slate-950/60 p-2 rounded-xl border border-slate-800 text-xs">
+                <span className="text-slate-300 font-semibold flex items-center gap-1">
+                  <span>การเรียงลำดับ:</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSortByOption('bossNumber')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                      sortByOption === 'bossNumber'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/30'
+                        : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span>🔢 เรียงเลขของบอส (1, 2, 3...)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSortByOption('sheetRow')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                      sortByOption === 'sheetRow'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/30'
+                        : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span>📑 เรียงตามแถวชีตเดิม</span>
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">

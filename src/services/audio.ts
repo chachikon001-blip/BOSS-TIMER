@@ -233,6 +233,23 @@ export function extractBossName(rawName: string, lang: TTSLanguageOption = 'thai
   return trimmed.replace(/\s*[-/|]\s*/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+let activeUtterance: SpeechSynthesisUtterance | null = null;
+let cachedVoices: SpeechSynthesisVoice[] = [];
+
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  const loadVoices = () => {
+    try {
+      cachedVoices = window.speechSynthesis.getVoices();
+    } catch {
+      // ignore
+    }
+  };
+  loadVoices();
+  if (window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }
+}
+
 /**
  * Text-to-Speech synthesis with voice and rate control
  */
@@ -244,23 +261,51 @@ export function speakText(
     lang?: string;
   } = {}
 ) {
-  if (!('speechSynthesis' in window)) return;
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   try {
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
     window.speechSynthesis.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
+    activeUtterance = utterance;
+
     const targetLang = options.lang || 'th-TH';
     utterance.lang = targetLang;
-    utterance.volume = options.volume ?? 0.8;
+    utterance.volume = options.volume !== undefined ? Math.max(0, Math.min(1, options.volume)) : 0.9;
     utterance.rate = options.rate ?? 1.05;
 
+    // Refresh voices if empty
+    if (cachedVoices.length === 0) {
+      cachedVoices = window.speechSynthesis.getVoices();
+    }
+
     // Pick appropriate voice
-    const voices = window.speechSynthesis.getVoices();
-    const matchedVoice = voices.find(v => v.lang.toLowerCase().includes(targetLang.toLowerCase().slice(0, 2)));
+    const matchedVoice = cachedVoices.find(v => {
+      const vLang = v.lang.toLowerCase().replace('_', '-');
+      const tLang = targetLang.toLowerCase().replace('_', '-');
+      return vLang === tLang || vLang.startsWith(tLang.slice(0, 2)) || v.name.toLowerCase().includes('thai');
+    });
+
     if (matchedVoice) {
       utterance.voice = matchedVoice;
     }
 
+    utterance.onend = () => {
+      activeUtterance = null;
+    };
+    utterance.onerror = (e) => {
+      console.warn('SpeechSynthesis error:', e);
+      activeUtterance = null;
+    };
+
     window.speechSynthesis.speak(utterance);
+
+    // Keep active
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
   } catch (err) {
     console.warn('TTS error:', err);
   }

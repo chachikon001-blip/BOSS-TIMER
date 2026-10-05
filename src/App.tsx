@@ -64,7 +64,20 @@ export default function App() {
     return deduplicateBossList(createInitialBosses()).uniqueBosses;
   });
   const [users, setUsers] = useState<UserAccount[]>(INITIAL_GUILD_USERS);
-  const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<NotificationSettings>(() => {
+    try {
+      const saved = localStorage.getItem('boss_timer_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.soundType === 'synth_chime') {
+          parsed.soundType = 'tts_thai';
+          localStorage.setItem('boss_timer_settings', JSON.stringify(parsed));
+        }
+        return parsed;
+      }
+    } catch {}
+    return DEFAULT_SETTINGS;
+  });
   const [sheetConfig, setSheetConfig] = useState<SheetConfig>(DEFAULT_SHEET_CONFIG);
 
   // App & Auth States (Enforce login: null by default if not authenticated in browser)
@@ -210,6 +223,9 @@ export default function App() {
       if (!isComponentMounted) return;
       if (fbSettings) {
         setSettings(fbSettings);
+        try {
+          localStorage.setItem('boss_timer_settings', JSON.stringify(fbSettings));
+        } catch {}
       }
     });
 
@@ -722,7 +738,10 @@ export default function App() {
 
   const handleSaveSettings = async (newSettings: NotificationSettings, showToast = true) => {
     setSettings(newSettings);
-    saveSettingsToFirestore(newSettings).catch(() => {});
+    try {
+      localStorage.setItem('boss_timer_settings', JSON.stringify(newSettings));
+    } catch {}
+    saveSettingsToFirestore(newSettings).catch((err) => console.error('Firestore save settings error:', err));
 
     if (newSettings.mainServerTag || newSettings.subServerTag) {
       setBosses((prev) => {
@@ -1323,6 +1342,14 @@ export default function App() {
           onClose={() => setIsSettingsOpen(false)}
           settings={settings}
           onSave={handleSaveSettings}
+          onOpenSheets={() => {
+            setIsSettingsOpen(false);
+            setIsSheetsOpen(true);
+          }}
+          onOpenReboot={() => {
+            setIsSettingsOpen(false);
+            setIsRebootOpen(true);
+          }}
         />
       )}
 
