@@ -373,8 +373,8 @@ setInterval(() => {
     const stages = state.settings.notifyAtMinutes || [10, 5, 3, 1];
 
     for (const stage of stages) {
-      // If within 25 seconds of the stage mark and not yet notified
-      if (diffMins > stage - 0.4 && diffMins <= stage && !boss.notifiedStages.includes(stage)) {
+      // If within 40 seconds of the stage mark and not yet notified
+      if (diffMins > stage - 0.7 && diffMins <= stage && !boss.notifiedStages.includes(stage)) {
         boss.notifiedStages.push(stage);
         updated = true;
 
@@ -748,6 +748,40 @@ app.post('/api/sheet-config', (req: Request, res: Response) => {
   persistState();
   broadcastSSE('sheet_config_update', state.sheetConfig);
   res.json({ success: true, sheetConfig: state.sheetConfig });
+});
+
+// High-Quality Thai & Multilingual TTS Audio Stream Endpoint
+app.get('/api/tts', async (req: Request, res: Response) => {
+  try {
+    const text = String(req.query.text || '').trim();
+    const lang = String(req.query.lang || 'th').trim();
+    if (!text) {
+      return res.status(400).send('Text is required');
+    }
+
+    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang)}&client=tw-ob&q=${encodeURIComponent(text)}`;
+    const upstreamRes = await fetch(ttsUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://translate.google.com/',
+      },
+    });
+
+    if (!upstreamRes.ok) {
+      return res.status(upstreamRes.status).send('TTS service unavailable');
+    }
+
+    const arrayBuffer = await upstreamRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.end(buffer);
+  } catch (error) {
+    console.error('TTS endpoint error:', error);
+    res.status(500).send('Error generating TTS');
+  }
 });
 
 // Test Webhook Dispatch
@@ -1125,10 +1159,16 @@ app.post('/api/users/login', (req: Request, res: Response) => {
     return res.status(401).json({ error: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' });
   }
 
-  // Auto-activate any user so no approval is required
-  if (user.status === 'pending' || !user.active) {
-    user.active = true;
-    user.status = 'active';
+  // Master Admin is always active
+  const isMasterAdmin = user.id === 'admin-master' || user.username.toLowerCase() === 'admin';
+
+  // Check pending or inactive approval status
+  if (!isMasterAdmin && (user.status === 'pending' || !user.active)) {
+    return res.status(403).json({ error: 'บัญชีนี้อยู่ระหว่างรอแอดมินอนุมัติ กรุณาติดต่อแอดมินเพื่อเปิดใช้งาน' });
+  }
+
+  if (!isMasterAdmin && user.status === 'rejected') {
+    return res.status(403).json({ error: 'บัญชีนี้ถูกปฏิเสธการเข้าใช้งานโดยแอดมิน' });
   }
 
   if (user.passwordHash && user.passwordHash !== password) {
@@ -1142,27 +1182,31 @@ app.post('/api/users/login', (req: Request, res: Response) => {
   res.json({ success: true, user: safeUser });
 });
 
-// Admin / Public: Create User ID (No permission request needed, ready to use immediately)
+// Admin / Public: Create User ID (New accounts require admin approval by default!)
 app.post('/api/users/create', (req: Request, res: Response) => {
-  const { username, displayName, password, role } = req.body;
+  const { username, displayName, password, role, createdByAdmin } = req.body;
   if (!username || !displayName) {
     return res.status(400).json({ error: 'กรุณากรอกชื่อผู้ใช้และชื่อแสดง' });
   }
 
-  const exists = state.users.some(u => u.username.toLowerCase() === username.toLowerCase());
+  const cleanUsername = String(username).trim();
+  const exists = state.users.some(u => u.username.toLowerCase() === cleanUsername.toLowerCase());
   if (exists) {
     return res.status(400).json({ error: 'ชื่อผู้ใช้นี้มีในระบบแล้ว' });
   }
 
+  const isMasterAdmin = cleanUsername.toLowerCase() === 'admin';
+  const shouldActivate = createdByAdmin || isMasterAdmin;
+
   const newUser: UserAccount = {
     id: `user-${Date.now()}`,
-    username,
-    displayName,
+    username: cleanUsername,
+    displayName: String(displayName).trim(),
     role: role === 'admin' ? 'admin' : 'member',
     passwordHash: password || '123456',
     createdAt: new Date().toISOString(),
-    active: true,
-    status: 'active',
+    active: shouldActivate ? true : false,
+    status: shouldActivate ? 'active' : 'pending',
   };
 
   state.users.push(newUser);
@@ -1170,7 +1214,14 @@ app.post('/api/users/create', (req: Request, res: Response) => {
   broadcastSSE('users_update', state.users.map(({ passwordHash: _, ...u }) => u));
 
   const { passwordHash: _, ...safeUser } = newUser;
-  res.json({ success: true, user: safeUser, isPending: false });
+  res.json({ 
+    success: true, 
+    user: safeUser, 
+    isPending: !shouldActivate,
+    message: shouldActivate 
+      ? 'สร้างบัญชีสำเร็จเรียบร้อยแล้ว' 
+      : 'สมัครสมาชิกสำเร็จ! บัญชีของคุณอยู่ระหว่างรอแอดมินอนุมัติ กรุณาติดต่อแอดมินเพื่อเปิดใช้งาน' 
+  });
 });
 
 // Admin: Update User Role / Status

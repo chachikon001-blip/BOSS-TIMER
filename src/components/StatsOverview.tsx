@@ -2,13 +2,16 @@ import React from 'react';
 import { Boss } from '../types/boss';
 import { formatRemainingTime } from '../utils/time';
 import { Flame, Skull, Clock, Sparkles } from 'lucide-react';
+import { translations, AppLanguage } from '../utils/translations';
 
 interface StatsOverviewProps {
   bosses: Boss[];
   currentServer: 'main' | 'sub' | 'all';
+  appLanguage?: AppLanguage;
 }
 
-export const StatsOverview: React.FC<StatsOverviewProps> = ({ bosses, currentServer }) => {
+export const StatsOverview: React.FC<StatsOverviewProps> = ({ bosses, currentServer, appLanguage = 'th' }) => {
+  const t = translations[appLanguage] || translations.th;
   const filtered = bosses.filter(b => currentServer === 'all' || b.server === currentServer);
 
   let soonCount = 0;
@@ -42,7 +45,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ bosses, currentSer
           : 'bg-slate-900/60 border-slate-800'
       }`}>
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-slate-400">ใกล้เกิด (&lt; 15 นาที)</span>
+          <span className="text-xs font-medium text-slate-400">{t.soonBosses}</span>
           <div className={`p-2 rounded-lg ${soonCount > 0 ? 'bg-amber-500/20 text-amber-400 animate-pulse' : 'bg-slate-800 text-slate-500'}`}>
             <Flame className="w-4 h-4" />
           </div>
@@ -51,18 +54,18 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ bosses, currentSer
           <span className={`text-2xl sm:text-3xl font-extrabold ${soonCount > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
             {soonCount}
           </span>
-          <span className="text-xs text-slate-500">ตัว</span>
+          <span className="text-xs text-slate-500">{t.unitBoss}</span>
         </div>
       </div>
 
       {/* Alive Now */}
       <div className={`p-4 rounded-xl border relative overflow-hidden transition ${
         aliveCount > 0
-          ? 'bg-gradient-to-br from-emerald-950/40 via-teal-950/20 to-slate-900 border-emerald-500/40 shadow-lg shadow-emerald-500/10'
+          ? 'bg-gradient-to-br from-emerald-950/40 via-teal-950/20 to-slate-900 border-emerald-500/40 shadow-lg shadow-emerald-500/10' 
           : 'bg-slate-900/60 border-slate-800'
       }`}>
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-slate-400">เกิดแล้วในแมพ</span>
+          <span className="text-xs font-medium text-slate-400">{t.aliveBosses}</span>
           <div className={`p-2 rounded-lg ${aliveCount > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
             <Sparkles className="w-4 h-4" />
           </div>
@@ -71,14 +74,14 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ bosses, currentSer
           <span className={`text-2xl sm:text-3xl font-extrabold ${aliveCount > 0 ? 'text-emerald-400' : 'text-slate-300'}`}>
             {aliveCount}
           </span>
-          <span className="text-xs text-slate-500">ตัวพร้อมล่า</span>
+          <span className="text-xs text-slate-500">{t.readyToHunt}</span>
         </div>
       </div>
 
       {/* Next Boss */}
       <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 relative overflow-hidden">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-slate-400">บอสตัวถัดไป</span>
+          <span className="text-xs font-medium text-slate-400">{t.nextBoss}</span>
           <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
             <Clock className="w-4 h-4" />
           </div>
@@ -92,7 +95,9 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ bosses, currentSer
               </p>
             </div>
           ) : (
-            <span className="text-sm text-slate-500 font-medium">ไม่มีบอสที่รอเกิด</span>
+            <span className="text-sm text-slate-500 font-medium">
+              {appLanguage === 'en' ? 'No pending spawns' : 'ไม่มีบอสที่รอเกิด'}
+            </span>
           )}
         </div>
       </div>
@@ -100,7 +105,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ bosses, currentSer
       {/* Total Tracked */}
       <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 relative overflow-hidden">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-slate-400">ติดตามทั้งหมด</span>
+          <span className="text-xs font-medium text-slate-400">{t.totalTracked}</span>
           <div className="p-2 rounded-lg bg-slate-800 text-slate-400">
             <Skull className="w-4 h-4" />
           </div>
@@ -110,7 +115,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ bosses, currentSer
             {filtered.length}
           </span>
           <span className="text-xs text-slate-500">
-            ({currentServer === 'main' ? 'เซิร์ฟหลัก' : currentServer === 'sub' ? 'เซิร์ฟรอง' : 'ทั้ง 2 เซิร์ฟ'})
+            ({currentServer === 'main' ? t.mainServer : currentServer === 'sub' ? t.subServer : t.bothServers})
           </span>
         </div>
       </div>

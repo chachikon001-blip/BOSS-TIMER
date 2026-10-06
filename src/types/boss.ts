@@ -51,6 +51,7 @@ export interface NotificationSettings {
   browserPushEnabled: boolean;
   mainServerTag?: string; // default e.g. "T3"
   subServerTag?: string;  // default e.g. "S1"
+  appLanguage?: 'th' | 'en'; // ภาษาของระบบ: ไทย (th) หรือ อังกฤษ (en)
 }
 
 export interface SheetConfig {

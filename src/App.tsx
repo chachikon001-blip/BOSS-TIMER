@@ -54,6 +54,28 @@ import {
   seedFirestoreIfEmpty
 } from './services/firestoreSync';
 
+function mergeWithLocalAudioSettings(incoming: NotificationSettings): NotificationSettings {
+  try {
+    const saved = localStorage.getItem('boss_timer_settings');
+    if (saved) {
+      const local = JSON.parse(saved);
+      return {
+        ...incoming,
+        // Individual user preferences are strictly preserved locally and not overwritten by guild sync
+        enabled: local.enabled !== undefined ? local.enabled : incoming.enabled,
+        soundType: local.soundType || incoming.soundType || 'tts_thai',
+        soundVolume: local.soundVolume !== undefined ? local.soundVolume : incoming.soundVolume,
+        ttsLanguage: local.ttsLanguage || incoming.ttsLanguage || 'thai_only',
+        ttsSpeed: local.ttsSpeed || incoming.ttsSpeed || 1.05,
+        appLanguage: local.appLanguage || incoming.appLanguage || 'th',
+        notifyAtMinutes: (local.notifyAtMinutes && local.notifyAtMinutes.length > 0) ? local.notifyAtMinutes : incoming.notifyAtMinutes,
+        browserPushEnabled: local.browserPushEnabled !== undefined ? local.browserPushEnabled : incoming.browserPushEnabled,
+      };
+    }
+  } catch {}
+  return incoming;
+}
+
 export default function App() {
   // Core Data States
   const [bosses, setBosses] = useState<Boss[]>(() => {
@@ -172,12 +194,105 @@ export default function App() {
   // Floating Notifications & Toast Queue
   const [notifications, setNotifications] = useState<AlertNotification[]>([]);
 
-  // Ticker for updating countdowns every second
+  const addNotification = useCallback((item: AlertNotification) => {
+    setNotifications((prev) => {
+      // ป้องกันการแจ้งเตือนซ้ำซ้อนภายใน 3 วินาที
+      const isDuplicate = prev.some(
+        (n) => n.id === item.id || (n.title === item.title && Math.abs(n.timestamp - item.timestamp) < 3000)
+      );
+      if (isDuplicate) return prev;
+      return [item, ...prev.slice(0, 2)];
+    });
+  }, []);
+
+  const removeNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  // Settings ref to always have latest settings without stale closures
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  // Keep track of announced boss stages: key = `${boss.id}-${spawnMs}-${stage}`
+  const alertedStagesRef = useRef<Set<string>>(new Set());
+
+  // Master function to announce boss at stages (10, 5, 3, 1 mins)
+  const triggerBossAlert = useCallback((boss: Boss, stage: number, customMessage?: string) => {
+    const s = settingsRef.current;
+    if (!s.enabled) return;
+
+    const spawnMs = boss.nextSpawnAt ? new Date(boss.nextSpawnAt).getTime() : 0;
+    const alertKey = `${boss.id}-${spawnMs}-${stage}`;
+    if (alertedStagesRef.current.has(alertKey)) return;
+    alertedStagesRef.current.add(alertKey);
+
+    const serverLabel = boss.serverTag || (boss.server === 'main' ? (s.mainServerTag || 'T3') : (s.subServerTag || 'S1'));
+
+    addNotification({
+      id: `alert-${boss.id}-${stage}-${Date.now()}`,
+      type: 'boss_alert',
+      title: `🚨 แจ้งเตือนบอสเกิด (${stage} นาที)`,
+      message: customMessage || `${boss.name} ${serverLabel} กำลังจะเกิดในอีก ${stage} นาที!`,
+      server: boss.server,
+      timestamp: Date.now(),
+    });
+
+    playBossAlert(
+      s.soundType || 'tts_thai',
+      s.soundVolume ?? 0.8,
+      s.customSoundUrl,
+      {
+        name: boss.name,
+        server: boss.server,
+        serverTag: serverLabel,
+        minutesLeft: stage,
+      },
+      s.ttsLanguage || 'thai_only',
+      s.ttsSpeed || 1.05
+    );
+
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(`⚔️ แจ้งเตือนบอสเกิด (${stage} นาที)`, {
+          body: `${boss.name} ${serverLabel} กำลังจะเกิดในอีก ${stage} นาที!`,
+          icon: '/favicon.ico',
+        });
+      } catch {}
+    }
+  }, [addNotification]);
+
+  // Ticker for updating countdowns every second & announcing 10, 5, 3, 1 min marks
   const [, setTick] = useState(0);
   useEffect(() => {
-    const timer = setInterval(() => setTick((t) => t + 1), 1000);
+    const timer = setInterval(() => {
+      setTick((t) => t + 1);
+
+      const now = Date.now();
+      const s = settingsRef.current;
+      if (!s.enabled) return;
+
+      const targetStages = (s.notifyAtMinutes && s.notifyAtMinutes.length > 0)
+        ? s.notifyAtMinutes
+        : [10, 5, 3, 1];
+
+      for (const boss of bosses) {
+        if (!boss.nextSpawnAt) continue;
+        const spawnMs = new Date(boss.nextSpawnAt).getTime();
+        const diffSecs = Math.floor((spawnMs - now) / 1000);
+
+        for (const stage of targetStages) {
+          const stageSecs = stage * 60; // 10m=600s, 5m=300s, 3m=180s, 1m=60s
+          // Trigger voice readout when within 0-4 seconds of the exact stage mark
+          if (diffSecs <= stageSecs && diffSecs >= stageSecs - 4) {
+            triggerBossAlert(boss, stage);
+          }
+        }
+      }
+    }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [bosses, triggerBossAlert]);
 
   // Save current user to localStorage
   useEffect(() => {
@@ -222,9 +337,10 @@ export default function App() {
     const unsubSettings = subscribeToFirestoreSettings((fbSettings) => {
       if (!isComponentMounted) return;
       if (fbSettings) {
-        setSettings(fbSettings);
+        const merged = mergeWithLocalAudioSettings(fbSettings);
+        setSettings(merged);
         try {
-          localStorage.setItem('boss_timer_settings', JSON.stringify(fbSettings));
+          localStorage.setItem('boss_timer_settings', JSON.stringify(merged));
         } catch {}
       }
     });
@@ -257,7 +373,7 @@ export default function App() {
           if (data) {
             if (data.bosses) setBosses(data.bosses);
             if (data.users) setUsers(data.users);
-            if (data.settings) setSettings(data.settings);
+            if (data.settings) setSettings(mergeWithLocalAudioSettings(data.settings));
             if (data.sheetConfig) setSheetConfig(data.sheetConfig);
             saveLocalCache(data.bosses);
             setIsOnline(true);
@@ -296,7 +412,7 @@ export default function App() {
             const data = JSON.parse(e.data);
             if (data.bosses) setBosses(data.bosses);
             if (data.users) setUsers(data.users);
-            if (data.settings) setSettings(data.settings);
+            if (data.settings) setSettings(mergeWithLocalAudioSettings(data.settings));
             if (data.sheetConfig) setSheetConfig(data.sheetConfig);
             saveLocalCache(data.bosses);
             setIsOnline(true);
@@ -313,7 +429,7 @@ export default function App() {
               saveLocalCache(data.bosses);
             }
             if (data.users) setUsers(data.users);
-            if (data.settings) setSettings(data.settings);
+            if (data.settings) setSettings(mergeWithLocalAudioSettings(data.settings));
             if (data.sheetConfig) setSheetConfig(data.sheetConfig);
             setIsOnline(true);
           } catch (err) {
@@ -324,40 +440,7 @@ export default function App() {
         eventSource.addEventListener('boss_alert', (e) => {
           try {
             const { boss, stage, message } = JSON.parse(e.data);
-            const serverLabel = boss.serverTag || (boss.server === 'main' ? 'T3' : 'S1');
-            addNotification({
-              id: `alert-${boss.id}-${stage}-${Date.now()}`,
-              type: 'boss_alert',
-              title: `🚨 แจ้งเตือนบอสเกิด (${stage} นาที)`,
-              message: message || `${boss.name} ${serverLabel} กำลังจะเกิดในอีก ${stage} นาที!`,
-              server: boss.server,
-              timestamp: Date.now(),
-            });
-
-            // Play Sound with custom server tag (e.g. "บัลโบ T3 กำลังจะเกิดในอีก 5 นาที") if enabled
-            if (settings.enabled) {
-              playBossAlert(
-                settings.soundType,
-                settings.soundVolume,
-                settings.customSoundUrl,
-                {
-                  name: boss.name,
-                  server: boss.server,
-                  serverTag: serverLabel,
-                  minutesLeft: stage,
-                },
-                settings.ttsLanguage || 'thai_only',
-                settings.ttsSpeed || 1.05
-              );
-            }
-
-            // Desktop Web Push
-            if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification(`⚔️ แจ้งเตือนบอสเกิด (${stage} นาที)`, {
-                body: `${boss.name} ${serverLabel} กำลังจะเกิดในอีก ${stage} นาที!`,
-                icon: '/favicon.ico',
-              });
-            }
+            triggerBossAlert(boss, stage, message);
           } catch (err) {
             console.error('SSE alert parse error:', err);
           }
@@ -501,21 +584,6 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, [bosses]);
-
-  const addNotification = useCallback((item: AlertNotification) => {
-    setNotifications((prev) => {
-      // ป้องกันการแจ้งเตือนซ้ำซ้อนภายใน 3 วินาที
-      const isDuplicate = prev.some(
-        (n) => n.id === item.id || (n.title === item.title && Math.abs(n.timestamp - item.timestamp) < 3000)
-      );
-      if (isDuplicate) return prev;
-      return [item, ...prev.slice(0, 2)];
-    });
-  }, []);
-
-  const removeNotification = useCallback((id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  }, []);
 
   // ลบการแจ้งเตือนที่หมดเวลา 5 วินาทีออกจาก State อัตโนมัติทุกวินาที
   useEffect(() => {
@@ -818,6 +886,9 @@ export default function App() {
   const handleToggleSound = () => {
     const nextEnabled = !settings.enabled;
     const nextSettings = { ...settings, enabled: nextEnabled };
+    try {
+      localStorage.setItem('boss_timer_settings', JSON.stringify(nextSettings));
+    } catch {}
     setSettings(nextSettings);
     handleSaveSettings(nextSettings, false);
 
@@ -848,6 +919,52 @@ export default function App() {
         type: 'boss_alert',
         title: '🔇 ปิดเสียงแจ้งเตือนแล้ว (Mute)',
         message: 'ระบบจะไม่ส่งเสียงแจ้งเตือนจนกว่าจะเปิดใหม่อีกครั้ง',
+        timestamp: Date.now(),
+      });
+    }
+  };
+
+  const handleToggleTts = () => {
+    const isCurrentlyTts = settings.enabled && settings.soundType === 'tts_thai';
+    const nextEnabled = !isCurrentlyTts;
+    const nextSettings: NotificationSettings = {
+      ...settings,
+      enabled: nextEnabled,
+      soundType: 'tts_thai',
+    };
+    try {
+      localStorage.setItem('boss_timer_settings', JSON.stringify(nextSettings));
+    } catch {}
+    setSettings(nextSettings);
+    handleSaveSettings(nextSettings, false);
+
+    if (nextEnabled) {
+      playBossAlert(
+        'tts_thai',
+        nextSettings.soundVolume,
+        nextSettings.customSoundUrl,
+        {
+          name: 'บัลโบ - BalBo',
+          server: 'main',
+          serverTag: nextSettings.mainServerTag || 'T3',
+          minutesLeft: 5,
+        },
+        nextSettings.ttsLanguage || 'thai_only',
+        nextSettings.ttsSpeed || 1.05
+      );
+      addNotification({
+        id: `tts-on-${Date.now()}`,
+        type: 'success',
+        title: '🗣️ เปิดระบบอ่านออกเสียงแล้ว',
+        message: 'ระบบจะพูดชื่อบอส เซิร์ฟเวอร์ และเวลานาทีเป็นภาษาไทยเมื่อบอสใกล้เกิด',
+        timestamp: Date.now(),
+      });
+    } else {
+      addNotification({
+        id: `tts-off-${Date.now()}`,
+        type: 'boss_alert',
+        title: '🔇 ปิดระบบอ่านออกเสียงแล้ว',
+        message: 'ปิดเสียงพูดแจ้งเตือนเรียบร้อยแล้ว (คลิกอีกครั้งเพื่อเปิด)',
         timestamp: Date.now(),
       });
     }
@@ -926,11 +1043,15 @@ export default function App() {
       return { success: false, error: 'รหัสผ่านไม่ถูกต้อง' };
     }
 
-    // Auto-activate user so no permission request is required
-    if (found.status === 'pending' || !found.active) {
-      found = { ...found, status: 'active', active: true };
-      saveUserToFirestore(found).catch(() => {});
-      setUsers(prev => prev.map(u => u.id === found!.id ? found! : u));
+    const isMasterAdmin = found.id === 'admin-master' || found.username.toLowerCase() === 'admin';
+
+    // Must be approved by admin before login
+    if (!isMasterAdmin && (found.status === 'pending' || !found.active)) {
+      return { success: false, error: 'บัญชีนี้อยู่ระหว่างรอแอดมินอนุมัติ กรุณาติดต่อแอดมินเพื่อเปิดใช้งาน' };
+    }
+
+    if (!isMasterAdmin && found.status === 'rejected') {
+      return { success: false, error: 'บัญชีนี้ถูกปฏิเสธการเข้าใช้งานโดยแอดมิน' };
     }
 
     setCurrentUser(found);
@@ -946,28 +1067,24 @@ export default function App() {
     const cleanUsername = data.username.trim();
     const cleanDisplayName = (data.displayName || data.username).trim();
 
-    // Prevent duplicate usernames or auto-login
+    // Prevent duplicate usernames
     const existing = users.find(u => u.username.toLowerCase() === cleanUsername.toLowerCase());
     if (existing) {
-      if (!existing.passwordHash || existing.passwordHash === (data.password || '123456')) {
-        const activeExisting = { ...existing, active: true, status: 'active' as const };
-        setCurrentUser(activeExisting);
-        try {
-          localStorage.setItem('boss_timer_current_user', JSON.stringify(activeExisting));
-        } catch {}
-        return { success: true, isPending: false, message: `เข้าสู่ระบบสำเร็จในฐานะ ${activeExisting.displayName}!` };
+      if (existing.status === 'pending' || !existing.active) {
+        return { success: false, message: 'บัญชีนี้สมัครไว้แล้ว แต่อยู่ระหว่างรอแอดมินอนุมัติ' };
       }
       return { success: false, message: 'ชื่อผู้ใช้นี้มีในระบบแล้ว กรุณาเข้าสู่ระบบด้วยรหัสผ่าน' };
     }
 
+    const isMasterAdmin = cleanUsername.toLowerCase() === 'admin';
     const newUser: UserAccount = {
       id: `user-${Date.now()}`,
       username: cleanUsername,
       displayName: cleanDisplayName,
-      role: 'member',
+      role: isMasterAdmin ? 'admin' : 'member',
       passwordHash: data.password || '123456',
-      active: true,
-      status: 'active',
+      active: isMasterAdmin ? true : false,
+      status: isMasterAdmin ? 'active' : 'pending',
       createdAt: new Date().toISOString(),
     };
 
@@ -979,20 +1096,23 @@ export default function App() {
       await fetch(getApiUrl('/api/users/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, role: 'member', createdByAdmin: true }),
+        body: JSON.stringify({ ...data, role: 'member', createdByAdmin: false }),
       });
     } catch {}
 
-    // Auto-login immediately! No permission request needed!
-    setCurrentUser(newUser);
-    try {
-      localStorage.setItem('boss_timer_current_user', JSON.stringify(newUser));
-    } catch {}
+    if (isMasterAdmin) {
+      setCurrentUser(newUser);
+      try {
+        localStorage.setItem('boss_timer_current_user', JSON.stringify(newUser));
+      } catch {}
+      return { success: true, isPending: false, message: 'เข้าสู่ระบบในฐานะแอดมินเรียบร้อยแล้ว' };
+    }
 
+    // New member requires Admin approval - do NOT auto-login!
     return { 
       success: true, 
-      isPending: false,
-      message: `สร้าง ID และเข้าสู่ระบบเรียบร้อยแล้ว ยินดีต้อนรับ ${cleanDisplayName}!` 
+      isPending: true, 
+      message: 'สมัครสมาชิกสำเร็จ! บัญชีของคุณอยู่ระหว่างรอแอดมินอนุมัติ กรุณาแจ้งแอดมินเพื่อเปิดใช้งานก่อนเข้าสู่ระบบ' 
     };
   };
 
@@ -1167,7 +1287,10 @@ export default function App() {
         isOnline={isOnline}
         isDarkMode={isDarkMode}
         isSoundEnabled={settings.enabled}
+        isTtsEnabled={settings.enabled && settings.soundType === 'tts_thai'}
+        appLanguage={settings.appLanguage || 'th'}
         onToggleSound={handleToggleSound}
+        onToggleTts={handleToggleTts}
         onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenAdmin={() => setIsAdminOpen(true)}
@@ -1210,7 +1333,7 @@ export default function App() {
         )}
 
         {/* Stats Summary Overview */}
-        <StatsOverview bosses={bosses} currentServer={currentTab} />
+        <StatsOverview bosses={bosses} currentServer={currentTab} appLanguage={settings.appLanguage || 'th'} />
 
         {/* Server Selection Tabs & Filter Controls */}
         <div className="mt-6 mb-4">

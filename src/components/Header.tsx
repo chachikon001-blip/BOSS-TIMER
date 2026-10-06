@@ -21,13 +21,17 @@ import {
 } from 'lucide-react';
 import { UserAccount } from '../types/boss';
 import { getLiveShareUrl } from '../services/apiConfig';
+import { translations, AppLanguage } from '../utils/translations';
 
 interface HeaderProps {
   currentUser: UserAccount | null;
   isOnline: boolean;
   isDarkMode: boolean;
   isSoundEnabled?: boolean;
+  isTtsEnabled?: boolean;
+  appLanguage?: AppLanguage;
   onToggleSound?: () => void;
+  onToggleTts?: () => void;
   onToggleDarkMode: () => void;
   onOpenSettings: () => void;
   onOpenAdmin: () => void;
@@ -45,7 +49,10 @@ export const Header: React.FC<HeaderProps> = ({
   isOnline,
   isDarkMode,
   isSoundEnabled = true,
+  isTtsEnabled = true,
+  appLanguage = 'th',
   onToggleSound,
+  onToggleTts,
   onToggleDarkMode,
   onOpenSettings,
   onOpenAdmin,
@@ -57,6 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
   onTestSound,
   pendingApprovalCount = 0,
 }) => {
+  const t = translations[appLanguage] || translations.th;
   const [currentTime, setCurrentTime] = useState<string>('');
   const [copiedShare, setCopiedShare] = useState<boolean>(false);
 
@@ -130,31 +138,47 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action buttons */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Quick Toggle Sound ON/OFF */}
+            {/* Quick Toggle TTS Read-Aloud ON/OFF (Placed exactly as requested) */}
             <button
-              onClick={onToggleSound || onTestSound}
-              title={isSoundEnabled ? 'เสียงแจ้งเตือน: เปิดอยู่ (คลิกเพื่อปิดเสียง)' : 'เสียงแจ้งเตือน: ปิดอยู่ (คลิกเพื่อเปิดเสียง)'}
-              className={`p-2 rounded-lg transition border ${
-                isSoundEnabled
-                  ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border-amber-500/40 shadow-sm shadow-amber-500/10'
-                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-500 hover:text-slate-300 border-slate-700/60'
+              onClick={onToggleTts || onToggleSound}
+              title={
+                isTtsEnabled
+                  ? (appLanguage === 'en' ? 'Voice readout: Enabled (Click to mute)' : 'ระบบอ่านออกเสียงบอสภาษาไทย: กำลังเปิดใช้งาน (คลิกเพื่อปิด)')
+                  : (appLanguage === 'en' ? 'Voice readout: Disabled (Click to enable)' : 'ระบบอ่านออกเสียงบอสภาษาไทย: ปิดอยู่ (คลิกเพื่อเปิด)')
+              }
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition shadow-sm active:scale-95 ${
+                isTtsEnabled
+                  ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/50 ring-1 ring-amber-500/30 shadow-amber-500/10'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border-slate-700/60'
               }`}
             >
-              {isSoundEnabled ? (
-                <Volume2 className="w-4 h-4 text-amber-400" />
+              {isTtsEnabled ? (
+                <>
+                  <Volume2 className="w-4 h-4 text-amber-400 animate-pulse" />
+                  <span className="hidden sm:inline">{t.readAloud}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 text-[10px] font-black shadow-xs">
+                    {t.on}
+                  </span>
+                </>
               ) : (
-                <VolumeX className="w-4 h-4 text-slate-500" />
+                <>
+                  <VolumeX className="w-4 h-4 text-slate-500" />
+                  <span className="hidden sm:inline">{t.readAloud}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-400 text-[10px] font-bold">
+                    {t.off}
+                  </span>
+                </>
               )}
             </button>
 
-            {/* Main Settings Button (Includes Google Sheets, Reboot, Share, Sound & Webhooks) */}
+            {/* Main Settings Button */}
             <button
               onClick={onOpenSettings}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-slate-700 hover:border-amber-500/50 text-xs font-bold transition shadow-sm active:scale-95"
-              title="เปิดเมนูการตั้งค่า (Google Sheets, รีบูทเซิร์ฟ, แชร์ลิงก์, เสียงแจ้งเตือน, Webhook)"
+              title="เปิดเมนูการตั้งค่า (Settings)"
             >
               <Settings className="w-4 h-4 text-amber-400" />
-              <span>ตั้งค่า</span>
+              <span>{t.settings}</span>
             </button>
 
             {/* Admin Management (if admin) */}
@@ -165,7 +189,7 @@ export const Header: React.FC<HeaderProps> = ({
                 title="จัดการระบบและผู้ใช้ (Admin)"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="hidden md:inline">จัดการกิลด์</span>
+                <span className="hidden md:inline">{t.guildManage}</span>
                 {pendingApprovalCount > 0 && (
                   <span className="flex items-center justify-center px-1.5 py-0.2 text-[10px] font-bold text-white bg-rose-500 rounded-full animate-bounce shadow-sm">
                     {pendingApprovalCount}
@@ -180,7 +204,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-md shadow-orange-600/20 text-xs font-semibold transition"
             >
               <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">เพิ่มบอส</span>
+              <span className="hidden sm:inline">{t.addBoss}</span>
             </button>
 
             {/* Dark / Light Toggle */}

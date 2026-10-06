@@ -2,28 +2,26 @@ import React, { useState } from 'react';
 import { NotificationSettings } from '../types/boss';
 import { 
   X, 
-  Bell, 
   Volume2, 
+  VolumeX,
+  Languages,
+  Clock, 
+  Server, 
+  Wrench, 
   Send, 
+  Check, 
   CheckCircle2, 
   AlertCircle, 
   Upload, 
-  Radio, 
-  Mic, 
+  Play, 
   Save, 
-  Sliders,
-  Languages,
-  Server,
-  Share2,
-  TableProperties,
+  TableProperties, 
   RotateCcw,
-  Check,
-  Copy,
-  Wrench,
-  ExternalLink
+  Sparkles,
+  Info
 } from 'lucide-react';
 import { playBossAlert } from '../services/audio';
-import { getLiveShareUrl } from '../services/apiConfig';
+import { translations } from '../utils/translations';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -34,6 +32,8 @@ interface SettingsModalProps {
   onOpenReboot?: () => void;
 }
 
+type TabType = 'audio' | 'language' | 'stages' | 'server' | 'tools' | 'webhooks';
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
@@ -43,28 +43,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onOpenReboot,
 }) => {
   const [localSettings, setLocalSettings] = useState<NotificationSettings>({ ...settings });
-  const [activeTab, setActiveTab] = useState<'tools' | 'audio' | 'server' | 'discord' | 'line'>('tools');
-  const [copiedShareLink, setCopiedShareLink] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('audio');
   const [testDiscordStatus, setTestDiscordStatus] = useState<{ loading: boolean; msg?: string; success?: boolean }>({ loading: false });
   const [testLineStatus, setTestLineStatus] = useState<{ loading: boolean; msg?: string; success?: boolean }>({ loading: false });
 
-  // Sync state ONLY when modal transitions to open (do not overwrite while user is modifying settings!)
+  // Sync state when modal opens
   React.useEffect(() => {
     if (isOpen) {
       setLocalSettings({ ...settings });
     }
-  }, [isOpen]);
+  }, [isOpen, settings]);
 
-  const handleCopyShare = async () => {
-    try {
-      const url = getLiveShareUrl();
-      await navigator.clipboard.writeText(url);
-      setCopiedShareLink(true);
-      setTimeout(() => setCopiedShareLink(false), 3000);
-    } catch {
-      // fallback
-    }
-  };
+  if (!isOpen) return null;
+
+  const currentLang = localSettings.appLanguage || 'th';
+  const t = translations[currentLang] || translations.th;
 
   const handleStageToggle = (stage: number) => {
     const stages = localSettings.notifyAtMinutes || [10, 5, 3, 1];
@@ -84,20 +77,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       const result = event.target?.result as string;
-      setLocalSettings({
+      const updated: NotificationSettings = {
         ...localSettings,
         soundType: 'custom',
         customSoundUrl: result,
-      });
-      // Test playback
-      playBossAlert('custom', localSettings.soundVolume, result);
+      };
+      setLocalSettings(updated);
+      playBossAlert('custom', updated.soundVolume, result);
     };
     reader.readAsDataURL(file);
   };
 
-  const handleTestSound = () => {
+  const handleTestSound = (typeOverride?: NotificationSettings['soundType']) => {
+    const targetType = typeOverride || localSettings.soundType;
     playBossAlert(
-      localSettings.soundType,
+      targetType,
       localSettings.soundVolume,
       localSettings.customSoundUrl,
       { 
@@ -111,42 +105,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     );
   };
 
-  const handleSelectSoundType = (typeId: any) => {
-    const updated = { ...localSettings, soundType: typeId };
-    setLocalSettings(updated);
-    // Auto-save immediately so selection is permanently stored
-    onSave(updated);
-    try {
-      localStorage.setItem('boss_timer_settings', JSON.stringify(updated));
-    } catch {}
-    // Instant audio preview
-    playBossAlert(
-      typeId,
-      updated.soundVolume,
-      updated.customSoundUrl,
-      { 
-        name: 'เทมเพสต์ - Valefar', 
-        server: 'main', 
-        serverTag: updated.mainServerTag || 'T3', 
-        minutesLeft: 5 
-      },
-      updated.ttsLanguage || 'thai_only',
-      updated.ttsSpeed || 1.05
-    );
-  };
-
-  const handleSaveDirectly = (overrideSettings?: NotificationSettings) => {
-    const toSave = overrideSettings || localSettings;
-    onSave(toSave);
+  const handleSaveAndClose = () => {
+    onSave(localSettings);
     onClose();
   };
 
   const handleTestDiscord = async () => {
     if (!localSettings.discordWebhookUrl) {
-      setTestDiscordStatus({ loading: false, success: false, msg: 'กรุณากรอก Webhook URL' });
+      setTestDiscordStatus({ loading: false, success: false, msg: currentLang === 'en' ? 'Please enter Discord Webhook URL' : 'กรุณากรอก Discord Webhook URL' });
       return;
     }
-
     setTestDiscordStatus({ loading: true });
     try {
       const res = await fetch('/api/test-webhook', {
@@ -156,21 +124,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
       const data = await res.json();
       if (res.ok) {
-        setTestDiscordStatus({ loading: false, success: true, msg: 'ส่งเข้า Discord เรียบร้อยแล้ว!' });
+        setTestDiscordStatus({ loading: false, success: true, msg: currentLang === 'en' ? 'Sent to Discord successfully!' : 'ส่งเข้า Discord เรียบร้อยแล้ว!' });
       } else {
-        setTestDiscordStatus({ loading: false, success: false, msg: data.error || 'ส่งไม่สำเร็จ' });
+        setTestDiscordStatus({ loading: false, success: false, msg: data.error || (currentLang === 'en' ? 'Send failed' : 'ส่งไม่สำเร็จ') });
       }
     } catch {
-      setTestDiscordStatus({ loading: false, success: false, msg: 'การเชื่อมต่อผิดพลาด' });
+      setTestDiscordStatus({ loading: false, success: false, msg: currentLang === 'en' ? 'Connection failed' : 'การเชื่อมต่อผิดพลาด' });
     }
   };
 
   const handleTestLine = async () => {
     if (!localSettings.lineWebhookUrl) {
-      setTestLineStatus({ loading: false, success: false, msg: 'กรุณากรอก LINE Webhook หรือ Token' });
+      setTestLineStatus({ loading: false, success: false, msg: currentLang === 'en' ? 'Please enter LINE Webhook URL' : 'กรุณากรอก LINE Webhook URL' });
       return;
     }
-
     setTestLineStatus({ loading: true });
     try {
       const res = await fetch('/api/test-webhook', {
@@ -180,419 +147,252 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
       const data = await res.json();
       if (res.ok) {
-        setTestLineStatus({ loading: false, success: true, msg: 'ส่งเข้า LINE เรียบร้อยแล้ว!' });
+        setTestLineStatus({ loading: false, success: true, msg: currentLang === 'en' ? 'Sent to LINE successfully!' : 'ส่งเข้า LINE เรียบร้อยแล้ว!' });
       } else {
-        setTestLineStatus({ loading: false, success: false, msg: data.error || 'ส่งไม่สำเร็จ' });
+        setTestLineStatus({ loading: false, success: false, msg: data.error || (currentLang === 'en' ? 'Send failed' : 'ส่งไม่สำเร็จ') });
       }
     } catch {
-      setTestLineStatus({ loading: false, success: false, msg: 'การเชื่อมต่อผิดพลาด' });
+      setTestLineStatus({ loading: false, success: false, msg: currentLang === 'en' ? 'Connection failed' : 'การเชื่อมต่อผิดพลาด' });
     }
   };
 
-  const handleRequestPushPermission = async () => {
-    if ('Notification' in window) {
-      const perm = await Notification.requestPermission();
-      if (perm === 'granted') {
-        new Notification('Boss Timer Pro', {
-          body: 'การแจ้งเตือนแบบพุชเปิดใช้งานแล้ว!',
-          icon: '/favicon.ico',
-        });
-        setLocalSettings({ ...localSettings, browserPushEnabled: true });
-      }
-    }
-  };
+  const soundOptions = [
+    { id: 'tts_thai', title: t.soundTts, desc: currentLang === 'en' ? 'Speaks boss name, server & minutes in Thai' : 'อ่านออกเสียงชื่อบอส เซิร์ฟเวอร์ และเวลานาที', badge: currentLang === 'en' ? 'Recommended' : 'แนะนำ' },
+    { id: 'synth_chime', title: t.soundChime, desc: currentLang === 'en' ? 'Pleasant melodic bell chime' : 'เสียงกระดิ่งใส ก้องกังวาน ไม่แสบหู' },
+    { id: 'warning_siren', title: t.soundSiren, desc: currentLang === 'en' ? 'Urgent high-pitch siren tone' : 'เสียงไซเรนเตือนภัยแบบเร่งด่วน ได้ยินชัดเจน' },
+    { id: 'horn', title: t.soundHorn, desc: currentLang === 'en' ? 'Battle horn march fanfare' : 'เสียงแตรเขาสัตว์สไตล์แฟนตาซี ล่าบอส' },
+    { id: '8bit', title: t.sound8bit, desc: currentLang === 'en' ? 'Classic 8-bit arcade beep' : 'เสียงสังเคราะห์ยุคเรโทร คลาสสิก' },
+    { id: 'sci_fi', title: t.soundScifi, desc: currentLang === 'en' ? 'Modern sci-fi frequency pulse' : 'เสียงคลื่นความถี่ไฮเทค ทันสมัย' },
+    { id: 'custom', title: t.soundCustom, desc: currentLang === 'en' ? 'Upload your own MP3/WAV file' : 'อัปโหลดไฟล์เสียง MP3/WAV ของคุณเอง' },
+  ];
 
-  const handleSave = () => {
-    onSave(localSettings);
-    onClose();
-  };
-
-  if (!isOpen) return null;
+  const tabs = [
+    { id: 'audio' as TabType, label: t.tabSound, icon: Volume2, color: 'text-amber-400' },
+    { id: 'language' as TabType, label: t.tabLanguage, icon: Languages, color: 'text-blue-400' },
+    { id: 'stages' as TabType, label: t.tabStages, icon: Clock, color: 'text-emerald-400' },
+    { id: 'server' as TabType, label: t.tabServerTags, icon: Server, color: 'text-purple-400' },
+    { id: 'tools' as TabType, label: t.tabTools, icon: Wrench, color: 'text-cyan-400' },
+    { id: 'webhooks' as TabType, label: t.tabWebhooks, icon: Send, color: 'text-indigo-400' },
+  ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl max-h-[88vh] shadow-2xl flex flex-col overflow-hidden">
-        {/* Header (Fixed) */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-800 shrink-0">
-          <div className="flex items-center gap-2">
-            <Bell className="w-5 h-5 text-orange-400" />
-            <h2 className="text-base font-bold text-slate-100">การตั้งค่าการแจ้งเตือน</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-100">
+        
+        {/* Modal Top Header */}
+        <div className="px-5 py-4 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
+                {t.settingsTitle}
+              </h2>
+              <p className="text-xs text-slate-400 hidden sm:block">
+                {t.settingsSubtitle}
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Global Alert Timing (10, 5, 3, 1 min) (Fixed) */}
-        <div className="p-3.5 sm:p-4 bg-slate-950/60 border-b border-slate-800/80 space-y-2 shrink-0">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-200">
-              ⏱️ แจ้งเตือนล่วงหน้าก่อนบอสเกิด (นาที):
-            </span>
-            <span className="text-[11px] text-amber-400">ทำงานอัตโนมัติทั้งในเว็บ, Discord และ LINE</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {[10, 5, 3, 1].map((stage) => {
-              const active = (localSettings.notifyAtMinutes || []).includes(stage);
+        {/* Informative Banner */}
+        <div className="px-5 py-2 bg-indigo-950/40 border-b border-indigo-900/40 flex items-center gap-2 text-xs text-indigo-300">
+          <Info className="w-4 h-4 flex-shrink-0 text-indigo-400" />
+          <span>
+            {currentLang === 'en'
+              ? 'Personal settings (sound, language, alert stages) are saved strictly in your browser and do NOT overwrite other guild members.'
+              : 'การตั้งค่าส่วนตัว (เสียง, ภาษา, ช่วงเวลานาที) บันทึกเฉพาะในเครื่องของคุณ จะไม่ซิงค์ทับเพื่อนร่วมกิลด์'}
+          </span>
+        </div>
+
+        {/* Modal Body: Vertical Navigation Layout */}
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+          
+          {/* Vertical Sidebar Tabs */}
+          <div className="w-full md:w-60 border-b md:border-b-0 md:border-r border-slate-800 bg-slate-950/50 p-2 sm:p-3 flex md:flex-col gap-1.5 overflow-x-auto md:overflow-x-visible md:overflow-y-auto flex-shrink-0">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
               return (
                 <button
-                  key={stage}
-                  type="button"
-                  onClick={() => handleStageToggle(stage)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
-                    active
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
-                      : 'bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-300'
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition whitespace-nowrap text-left w-full ${
+                    isActive
+                      ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
                   }`}
                 >
-                  {stage} นาทีก่อนเกิด {active ? '✓' : ''}
+                  <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-amber-400' : tab.color}`} />
+                  <span className="flex-1 truncate">{tab.label}</span>
                 </button>
               );
             })}
           </div>
-        </div>
 
-        {/* Sub-tabs (Fixed) */}
-        <div className="flex border-b border-slate-800 bg-slate-950 px-4 shrink-0 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('tools')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition shrink-0 ${
-              activeTab === 'tools'
-                ? 'border-amber-500 text-amber-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Wrench className="w-3.5 h-3.5" />
-            <span>เครื่องมือ & จัดการ (ชีต/รีบูท/แชร์)</span>
-          </button>
+          {/* Tab Content Panel */}
+          <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-slate-900/60 space-y-6">
+            
+            {/* 1. SOUND & TTS TAB */}
+            {activeTab === 'audio' && (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="border-b border-slate-800 pb-3">
+                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <Volume2 className="w-5 h-5 text-amber-400" />
+                    {t.tabSound}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {currentLang === 'en' ? 'Configure voice readout, sound effects and volumes' : 'กำหนดเสียงแจ้งเตือน เสียงพูดสังเคราะห์ภาษาไทย และระดับความดัง'}
+                  </p>
+                </div>
 
-          <button
-            onClick={() => setActiveTab('audio')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition shrink-0 ${
-              activeTab === 'audio'
-                ? 'border-amber-500 text-amber-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Volume2 className="w-3.5 h-3.5" />
-            <span>เสียงแจ้งเตือน & ภาษาไทย</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('server')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition shrink-0 ${
-              activeTab === 'server'
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Server className="w-3.5 h-3.5" />
-            <span>รหัสเซิร์ฟเวอร์</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('discord')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition shrink-0 ${
-              activeTab === 'discord'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Radio className="w-3.5 h-3.5" />
-            <span>Discord Webhook</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('line')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition shrink-0 ${
-              activeTab === 'line'
-                ? 'border-emerald-500 text-emerald-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Send className="w-3.5 h-3.5" />
-            <span>LINE แจ้งเตือน</span>
-          </button>
-        </div>
-
-        {/* Tab Content (Scrollable) */}
-        <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto">
-          {/* 1. Tools Tab (Google Sheets, Reboot Server, Share Link) */}
-          {activeTab === 'tools' && (
-            <div className="space-y-4">
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200">
-                ✨ รวมเครื่องมือหลักและบริการทั้งหมดไว้ที่นี่ เพื่อความสะดวกในการจัดการกิลด์
-              </div>
-
-              {/* Tool 1: Google Sheets */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 hover:border-emerald-500/40 transition">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      <TableProperties className="w-5 h-5" />
+                {/* Master Sound Switch */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-slate-800/70 border border-slate-700/60">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl ${localSettings.enabled ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700/50 text-slate-500'}`}>
+                      {localSettings.enabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
-                        <span>Google Sheets (ซิงค์ & คัดลอกช่อง A-F)</span>
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        ซิงค์ข้อมูลกับ Google Sheet, นำเข้าบอส, และคัดลอกตารางช่อง A-F พร้อมสีไปวาง
-                      </p>
+                      <div className="text-sm font-bold text-slate-200">{t.enableSound}</div>
+                      <div className="text-xs text-slate-400">
+                        {localSettings.enabled 
+                          ? (currentLang === 'en' ? 'Sound is currently active' : 'เปิดใช้งานเสียงเตือนแล้ว') 
+                          : (currentLang === 'en' ? 'Muted' : 'ปิดเสียงเตือนอยู่')}
+                      </div>
                     </div>
                   </div>
-                  {onOpenSheets && (
-                    <button
-                      type="button"
-                      onClick={onOpenSheets}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/30 shrink-0 active:scale-95"
-                    >
-                      <TableProperties className="w-4 h-4" />
-                      <span>เปิด Google Sheets</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Tool 2: Server Reboot */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 hover:border-amber-500/40 transition">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                      <RotateCcw className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
-                        <span>รีบูทเซิร์ฟเวอร์ (Server Reboot - ช่อง P)</span>
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        คำนวณและรีเซ็ตเวลาเกิดใหม่ของบอสทั้งเซิร์ฟเวอร์อัตโนมัติ ตามเวลาเปิดเซิร์ฟใหม่
-                      </p>
-                    </div>
-                  </div>
-                  {onOpenReboot && (
-                    <button
-                      type="button"
-                      onClick={onOpenReboot}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-600/30 shrink-0 active:scale-95"
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                      <span>เปิดรีบูทเซิร์ฟเวอร์</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Tool 3: Share Live Link */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 hover:border-sky-500/40 transition">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2.5 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30">
-                    <Share2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
-                      <span>แชร์ลิงก์ให้เพื่อนในกิลด์ (Live Sync)</span>
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      ทุกคนที่เปิดลิงก์นี้จะเห็นเวลาบอส อัปเดตและแจ้งเตือนซิงค์ตรงกันแบบเรียลไทม์
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
-                  <input
-                    type="text"
-                    readOnly
-                    value={getLiveShareUrl()}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-slate-300 select-all"
-                  />
                   <button
-                    type="button"
-                    onClick={handleCopyShare}
-                    className={`w-full sm:w-auto px-4 py-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 active:scale-95 ${
-                      copiedShareLink
-                        ? 'bg-emerald-900/60 text-emerald-200 border-emerald-500/60 shadow-sm'
-                        : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-500 shadow-md shadow-sky-600/30'
+                    onClick={() => {
+                      const next = !localSettings.enabled;
+                      setLocalSettings({ ...localSettings, enabled: next });
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      localSettings.enabled ? 'bg-amber-500' : 'bg-slate-700'
                     }`}
                   >
-                    {copiedShareLink ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>คัดลอกสำเร็จ!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5 text-white" />
-                        <span>คัดลอกลิงก์</span>
-                      </>
-                    )}
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        localSettings.enabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
                   </button>
                 </div>
-              </div>
-            </div>
-          )}
-          {activeTab === 'audio' && (
-            <div className="space-y-4">
-              {/* Sound Type Selection */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-semibold text-slate-300">
-                    เลือกสไตล์เสียงแจ้งเตือน (คลิกเพื่อทดลองฟังทันที)
+
+                {/* Volume Slider */}
+                <div className="space-y-2 p-4 rounded-xl bg-slate-800/40 border border-slate-800">
+                  <div className="flex justify-between text-xs font-semibold">
+                    <span className="text-slate-300">{t.volume}</span>
+                    <span className="text-amber-400 font-mono">{Math.round(localSettings.soundVolume * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={localSettings.soundVolume}
+                    onChange={(e) => setLocalSettings({ ...localSettings, soundVolume: parseFloat(e.target.value) })}
+                    className="w-full accent-amber-500 bg-slate-700 h-2 rounded-lg cursor-pointer"
+                  />
+                </div>
+
+                {/* Sound Types Selection */}
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    {t.soundType}
                   </label>
-                  <span className="text-[10px] text-amber-400">คลิกที่ปุ่มเพื่อทดสอบเสียง</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {[
-                    { id: 'synth_chime', label: 'กระดิ่งสังเคราะห์ (Synth Chime)', desc: 'เสียงใส นุ่มนวล ไม่แสบหู' },
-                    { id: 'tts_thai', label: '🗣️ เสียงพูดภาษาไทย (Thai TTS)', desc: 'พูดชื่อบอสและเวลานาทีชัดเจน' },
-                    { id: 'warning_siren', label: 'ไซเรนเตือนภัย (Warning Siren)', desc: 'เตือนหนักแน่น ตื่นตัว' },
-                    { id: 'horn', label: 'แตรสัญญาณ (Fanfare Horn)', desc: 'เสียงแตรชัยชนะ อลังการ' },
-                    { id: '8bit', label: 'เกมเรโทร 8-Bit', desc: 'คลาสสิกเกมตลับ RPG' },
-                    { id: 'sci_fi', label: 'ไฮเทค ไซไฟ (Sci-Fi Pulse)', desc: 'ล้ำสมัย แบบเรดาร์' },
-                  ].map((s) => {
-                    const isSelected = localSettings.soundType === s.id;
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => handleSelectSoundType(s.id as any)}
-                        className={`p-3 rounded-xl border text-left transition flex items-start justify-between gap-2 cursor-pointer ${
-                          isSelected
-                            ? 'bg-amber-500/15 border-amber-500 text-amber-200 shadow-md shadow-amber-500/10 ring-1 ring-amber-500/40'
-                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
-                        }`}
-                      >
-                        <div>
-                          <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                            <span>{s.label}</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {soundOptions.map((opt) => {
+                      const isSelected = localSettings.soundType === opt.id;
+                      return (
+                        <div
+                          key={opt.id}
+                          onClick={() => setLocalSettings({ ...localSettings, soundType: opt.id as any })}
+                          className={`p-3 rounded-xl border text-left cursor-pointer transition flex flex-col justify-between ${
+                            isSelected
+                              ? 'bg-amber-500/15 border-amber-500/50 shadow-sm'
+                              : 'bg-slate-800/50 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-200">{opt.title}</span>
+                            {opt.badge && (
+                              <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-slate-950">
+                                {opt.badge}
+                              </span>
+                            )}
                           </div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">{s.desc}</div>
+                          <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{opt.desc}</p>
+                          <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-slate-700/40">
+                            <span className="text-[11px] text-slate-400 font-medium">
+                              {isSelected ? (
+                                <span className="text-amber-400 flex items-center gap-1 font-bold">
+                                  <Check className="w-3.5 h-3.5" /> {currentLang === 'en' ? 'Active' : 'กำลังเลือก'}
+                                </span>
+                              ) : (
+                                <span>{currentLang === 'en' ? 'Select' : 'เลือก'}</span>
+                              )}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleTestSound(opt.id as any);
+                              }}
+                              className="text-[11px] px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 flex items-center gap-1 transition"
+                            >
+                              <Play className="w-3 h-3 text-amber-400" />
+                              <span>{currentLang === 'en' ? 'Preview' : 'ลองฟัง'}</span>
+                            </button>
+                          </div>
                         </div>
-                        {isSelected && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-slate-950 shrink-0">
-                            เลือกอยู่ ✓
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
 
-              {/* Language Selection for TTS (Thai only, English only, All) */}
-              {localSettings.soundType === 'tts_thai' && (
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-amber-500/40 space-y-3 animate-fade-in shadow-lg shadow-amber-950/20">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                      <Languages className="w-4 h-4 text-amber-400" />
-                      <span>เลือกภาษาการอ่านชื่อบอส (TTS Language):</span>
+                {/* Custom File Upload Input */}
+                {localSettings.soundType === 'custom' && (
+                  <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-2">
+                    <label className="text-xs font-semibold text-slate-300 block">
+                      {currentLang === 'en' ? 'Upload Custom Audio (MP3 / WAV)' : 'อัปโหลดไฟล์เสียงกำหนดเอง (MP3 / WAV)'}
                     </label>
-                    <span className="text-[10px] text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-mono">
-                      เช่น เทมเพสต์ - Valefar
-                    </span>
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      onChange={handleFileUpload}
+                      className="block w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-amber-500 file:text-slate-950 hover:file:bg-amber-400 cursor-pointer"
+                    />
                   </div>
+                )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const updated = { ...localSettings, ttsLanguage: 'thai_only' as const };
-                        setLocalSettings(updated);
-                        playBossAlert('tts_thai', updated.soundVolume, undefined, {
-                          name: 'เทมเพสต์ - Valefar',
-                          server: 'main',
-                          serverTag: updated.mainServerTag || 'T3',
-                          minutesLeft: 5,
-                        }, 'thai_only', updated.ttsSpeed || 1.05);
-                      }}
-                      className={`p-2.5 rounded-lg border text-left transition ${
-                        (localSettings.ttsLanguage || 'thai_only') === 'thai_only'
-                          ? 'bg-amber-500/20 border-amber-500 text-amber-200 shadow-sm'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-xs font-bold flex items-center justify-between">
-                        <span>🇹🇭 ไทยเท่านั้น</span>
-                        {(localSettings.ttsLanguage || 'thai_only') === 'thai_only' && <span className="text-amber-400">✓</span>}
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-1">อ่านเฉพาะ "เทมเพสต์" (ไม่อ่านภาษาอังกฤษ)</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const updated = { ...localSettings, ttsLanguage: 'english_only' as const };
-                        setLocalSettings(updated);
-                        playBossAlert('tts_thai', updated.soundVolume, undefined, {
-                          name: 'เทมเพสต์ - Valefar',
-                          server: 'main',
-                          serverTag: updated.mainServerTag || 'T3',
-                          minutesLeft: 5,
-                        }, 'english_only', updated.ttsSpeed || 1.05);
-                      }}
-                      className={`p-2.5 rounded-lg border text-left transition ${
-                        localSettings.ttsLanguage === 'english_only'
-                          ? 'bg-amber-500/20 border-amber-500 text-amber-200 shadow-sm'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-xs font-bold flex items-center justify-between">
-                        <span>🇺🇸 อังกฤษเท่านั้น</span>
-                        {localSettings.ttsLanguage === 'english_only' && <span className="text-amber-400">✓</span>}
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-1">อ่านเฉพาะ "Valefar" (ไม่อ่านภาษาไทย)</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const updated = { ...localSettings, ttsLanguage: 'all' as const };
-                        setLocalSettings(updated);
-                        playBossAlert('tts_thai', updated.soundVolume, undefined, {
-                          name: 'เทมเพสต์ - Valefar',
-                          server: 'main',
-                          serverTag: updated.mainServerTag || 'T3',
-                          minutesLeft: 5,
-                        }, 'all', updated.ttsSpeed || 1.05);
-                      }}
-                      className={`p-2.5 rounded-lg border text-left transition ${
-                        localSettings.ttsLanguage === 'all'
-                          ? 'bg-amber-500/20 border-amber-500 text-amber-200 shadow-sm'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-xs font-bold flex items-center justify-between">
-                        <span>🌐 อ่านทั้งหมด</span>
-                        {localSettings.ttsLanguage === 'all' && <span className="text-amber-400">✓</span>}
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-1">อ่านชื่อเต็มทั้งสองภาษา</div>
-                    </button>
-                  </div>
-
-                  {/* Speech Rate Control & Quick Save */}
-                  <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-400">ความเร็วเสียงพูด:</span>
-                      <div className="flex gap-1.5">
+                {/* TTS Language Format */}
+                {localSettings.soundType === 'tts_thai' && (
+                  <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-800 space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 block mb-2">
+                        {t.ttsNameFormat}
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         {[
-                          { speed: 0.95, label: '0.95x ช้า' },
-                          { speed: 1.05, label: '1.05x ปกติ' },
-                          { speed: 1.2, label: '1.20x เร็ว' },
+                          { id: 'thai_only', label: t.ttsThaiOnly },
+                          { id: 'english_only', label: t.ttsEngOnly },
+                          { id: 'all', label: t.ttsAll },
                         ].map((item) => (
                           <button
-                            key={item.speed}
+                            key={item.id}
                             type="button"
-                            onClick={() => {
-                              const updated = { ...localSettings, ttsSpeed: item.speed };
-                              setLocalSettings(updated);
-                              handleTestSound();
-                            }}
-                            className={`px-2 py-1 rounded text-[11px] font-medium border transition ${
-                              (localSettings.ttsSpeed || 1.05) === item.speed
-                                ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                            onClick={() => setLocalSettings({ ...localSettings, ttsLanguage: item.id as any })}
+                            className={`py-2 px-3 rounded-lg text-xs font-semibold border transition ${
+                              (localSettings.ttsLanguage || 'thai_only') === item.id
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-xs'
+                                : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200'
                             }`}
                           >
                             {item.label}
@@ -601,311 +401,391 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                     </div>
 
+                    <div>
+                      <div className="flex justify-between text-xs font-semibold mb-1">
+                        <span className="text-slate-300">{t.ttsSpeed}</span>
+                        <span className="text-amber-400 font-mono">{(localSettings.ttsSpeed || 1.05).toFixed(2)}x</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.8"
+                        max="1.5"
+                        step="0.05"
+                        value={localSettings.ttsSpeed || 1.05}
+                        onChange={(e) => setLocalSettings({ ...localSettings, ttsSpeed: parseFloat(e.target.value) })}
+                        className="w-full accent-amber-500 bg-slate-700 h-2 rounded-lg cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 2. APP LANGUAGE TAB */}
+            {activeTab === 'language' && (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="border-b border-slate-800 pb-3">
+                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <Languages className="w-5 h-5 text-blue-400" />
+                    {t.tabLanguage}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {t.langNotice}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    {t.selectLanguage}
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div
+                      onClick={() => setLocalSettings({ ...localSettings, appLanguage: 'th' })}
+                      className={`p-4 rounded-xl border cursor-pointer transition flex items-center gap-3.5 ${
+                        (localSettings.appLanguage || 'th') === 'th'
+                          ? 'bg-blue-500/15 border-blue-500/50 shadow-sm'
+                          : 'bg-slate-800/50 border-slate-700/60 hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="text-3xl">🇹🇭</div>
+                      <div className="flex-1">
+                        <div className="text-sm font-bold text-slate-100">ภาษาไทย (Thai)</div>
+                        <div className="text-xs text-slate-400">ระบบเมนู คำอธิบาย และตารางแสดงผลภาษาไทย</div>
+                      </div>
+                      {(localSettings.appLanguage || 'th') === 'th' && (
+                        <CheckCircle2 className="w-5 h-5 text-blue-400" />
+                      )}
+                    </div>
+
+                    <div
+                      onClick={() => setLocalSettings({ ...localSettings, appLanguage: 'en' })}
+                      className={`p-4 rounded-xl border cursor-pointer transition flex items-center gap-3.5 ${
+                        localSettings.appLanguage === 'en'
+                          ? 'bg-blue-500/15 border-blue-500/50 shadow-sm'
+                          : 'bg-slate-800/50 border-slate-700/60 hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="text-3xl">🇺🇸</div>
+                      <div className="flex-1">
+                        <div className="text-sm font-bold text-slate-100">English</div>
+                        <div className="text-xs text-slate-400">English interface, buttons, tables and timers</div>
+                      </div>
+                      {localSettings.appLanguage === 'en' && (
+                        <CheckCircle2 className="w-5 h-5 text-blue-400" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 3. NOTIFICATION STAGES TAB */}
+            {activeTab === 'stages' && (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="border-b border-slate-800 pb-3">
+                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-emerald-400" />
+                    {t.tabStages}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {currentLang === 'en' ? 'Select which minutes before spawn will trigger alert voices and notifications' : 'เลือกระยะเวลานาทีก่อนบอสเกิดที่ต้องการให้อ่านออกเสียงเตือน'}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    {t.stagesTitle}
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[10, 5, 3, 1].map((stage) => {
+                      const active = (localSettings.notifyAtMinutes || []).includes(stage);
+                      return (
+                        <button
+                          key={stage}
+                          type="button"
+                          onClick={() => handleStageToggle(stage)}
+                          className={`p-3.5 rounded-xl border font-bold text-xs sm:text-sm flex flex-col items-center justify-center gap-1 transition ${
+                            active
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm'
+                              : 'bg-slate-800/60 text-slate-500 border-slate-700/60 hover:text-slate-300'
+                          }`}
+                        >
+                          <span>{stage} {currentLang === 'en' ? 'mins' : 'นาที'}</span>
+                          <span className="text-[11px] font-normal opacity-90">
+                            {active ? (currentLang === 'en' ? '✓ Active' : '✓ แจ้งเตือน') : (currentLang === 'en' ? 'Off' : 'ปิด')}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Browser Desktop Push */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-slate-800/50 border border-slate-700/60">
+                  <div>
+                    <div className="text-sm font-bold text-slate-200">{t.browserPush}</div>
+                    <div className="text-xs text-slate-400">
+                      {currentLang === 'en' ? 'Show desktop system notification banner' : 'แสดงป๊อปอัปแจ้งเตือนบนหน้าจอบราวเซอร์'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setLocalSettings({ ...localSettings, browserPushEnabled: !localSettings.browserPushEnabled })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      localSettings.browserPushEnabled ? 'bg-emerald-500' : 'bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        localSettings.browserPushEnabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 4. SERVER TAGS TAB */}
+            {activeTab === 'server' && (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="border-b border-slate-800 pb-3">
+                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <Server className="w-5 h-5 text-purple-400" />
+                    {t.tabServerTags}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {currentLang === 'en' ? 'Set server prefix tags (e.g. T3, S1, B9)' : 'กำหนดรหัสหรือชื่อย่อของเซิร์ฟเวอร์หลักและเซิร์ฟเวอร์รอง'}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2 p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+                    <label className="text-xs font-bold text-slate-300 block">
+                      {currentLang === 'en' ? 'Main Server Tag (e.g. T3)' : 'รหัสเซิร์ฟเวอร์หลัก (เช่น T3)'}
+                    </label>
+                    <input
+                      type="text"
+                      value={localSettings.mainServerTag || 'T3'}
+                      onChange={(e) => setLocalSettings({ ...localSettings, mainServerTag: e.target.value.toUpperCase() })}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-amber-400 font-bold focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="space-y-2 p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+                    <label className="text-xs font-bold text-slate-300 block">
+                      {currentLang === 'en' ? 'Sub Server Tag (e.g. S1 / B9)' : 'รหัสเซิร์ฟเวอร์รอง (เช่น S1 / B9)'}
+                    </label>
+                    <input
+                      type="text"
+                      value={localSettings.subServerTag || 'S1'}
+                      onChange={(e) => setLocalSettings({ ...localSettings, subServerTag: e.target.value.toUpperCase() })}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-amber-400 font-bold focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 5. TOOLS TAB (SHARE LINK BUTTON REMOVED AS REQUESTED) */}
+            {activeTab === 'tools' && (
+              <div className="space-y-4 animate-fadeIn">
+                <div className="border-b border-slate-800 pb-3">
+                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <Wrench className="w-5 h-5 text-cyan-400" />
+                    {t.tabTools}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {currentLang === 'en' ? 'Guild tools for Google Sheets and Server Reboot' : 'เครื่องมือจัดการบอส Google Sheets และการคำนวณเวลารีบูทเซิร์ฟเวอร์'}
+                  </p>
+                </div>
+
+                {/* Google Sheets Tool Card */}
+                {onOpenSheets && (
+                  <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                        <TableProperties className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-slate-100">{t.googleSheets}</div>
+                        <div className="text-xs text-slate-400">
+                          {currentLang === 'en' ? 'Sync data with Google Sheet and export columns A-F' : 'ซิงค์ข้อมูลกับ Google Sheet, นำเข้าบอส, และคัดลอกตารางช่อง A-F'}
+                        </div>
+                      </div>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => handleSaveDirectly(localSettings)}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/30 text-xs ml-auto transition"
+                      onClick={() => {
+                        onClose();
+                        onOpenSheets();
+                      }}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>บันทึกและใช้เสียงพูดทันที</span>
+                      <span>{t.openSheets}</span>
                     </button>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Custom Audio File Upload */}
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Upload className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs font-semibold text-slate-200">อัปโหลดไฟล์เสียงของตัวเอง (.mp3 / .wav)</span>
+                {/* Server Reboot Tool Card */}
+                {onOpenReboot && (
+                  <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                        <RotateCcw className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-slate-100">{t.rebootServer}</div>
+                        <div className="text-xs text-slate-400">
+                          {currentLang === 'en' ? 'Auto calculate boss spawn timers based on reboot time' : 'คำนวณและรีเซ็ตเวลาเกิดใหม่ของบอสทั้งเซิร์ฟเวอร์อัตโนมัติ'}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenReboot();
+                      }}
+                      className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      <span>{t.openReboot}</span>
+                    </button>
                   </div>
-                  {localSettings.soundType === 'custom' && (
-                    <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                      กำลังใช้งานไฟล์นี้
-                    </span>
-                  )}
-                </div>
-                <input
-                  type="file"
-                  accept="audio/*"
-                  onChange={handleFileUpload}
-                  className="block w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-amber-300 hover:file:bg-slate-700 cursor-pointer"
-                />
+                )}
               </div>
+            )}
 
-              {/* Volume Slider & Test Button */}
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-300">
-                    <Sliders className="w-3.5 h-3.5 inline mr-1 text-slate-400" />
-                    ระดับความดังเสียง: {Math.round(localSettings.soundVolume * 100)}%
-                  </span>
+            {/* 6. DISCORD & LINE WEBHOOKS TAB */}
+            {activeTab === 'webhooks' && (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="border-b border-slate-800 pb-3">
+                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <Send className="w-5 h-5 text-indigo-400" />
+                    {t.tabWebhooks}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {currentLang === 'en' ? 'Send boss spawn alert notifications to Discord channel or LINE' : 'ส่งการแจ้งเตือนบอสเกิดไปยังห้อง Discord หรือกลุ่ม LINE'}
+                  </p>
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={localSettings.soundVolume}
-                  onChange={(e) => setLocalSettings({ ...localSettings, soundVolume: parseFloat(e.target.value) })}
-                  className="w-full accent-amber-500 cursor-pointer"
-                />
-                
-                <button
-                  type="button"
-                  onClick={handleTestSound}
-                  className="w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-bold flex items-center justify-center gap-2 border border-slate-700 transition"
-                >
-                  <Volume2 className="w-4 h-4" />
-                  <span>🔊 กดทดสอบฟังเสียงที่เลือกตอนนี้</span>
-                </button>
-              </div>
 
-              {/* Browser Push */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div>
-                  <div className="text-xs font-semibold text-slate-200">การแจ้งเตือนป๊อปอัปบนหน้าจอ (Web Push)</div>
-                  <div className="text-[11px] text-slate-500">แจ้งเตือนแม้จะย่อหน้าต่างหรือสลับแอป</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRequestPushPermission}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700"
-                >
-                  ขออนุญาตเบราว์เซอร์
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'discord' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div>
-                  <span className="text-xs font-bold text-slate-200">เปิดใช้งานส่งเข้า Discord</span>
-                  <p className="text-[11px] text-slate-500">ส่งแจ้งเตือนบอสเกิด 10, 5, 3, 1 นาทีพร้อมการ์ดสีสวยงาม</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={localSettings.discordEnabled}
-                  onChange={(e) => setLocalSettings({ ...localSettings, discordEnabled: e.target.checked })}
-                  className="w-4 h-4 accent-indigo-500 rounded"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Discord Webhook URL
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://discord.com/api/webhooks/..."
-                  value={localSettings.discordWebhookUrl}
-                  onChange={(e) => setLocalSettings({ ...localSettings, discordWebhookUrl: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
-                />
-                <p className="text-[11px] text-slate-500 mt-1">
-                  วิธีสร้าง: ไปที่ห้อง Discord &gt; แก้ไขห้อง (Edit Channel) &gt; การผสานรวม (Integrations) &gt; สร้าง Webhook
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleTestDiscord}
-                disabled={testDiscordStatus.loading}
-                className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-indigo-600/30 transition"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>{testDiscordStatus.loading ? 'กำลังส่งทดสอบ...' : 'ทดสอบส่งข้อความเข้า Discord'}</span>
-              </button>
-
-              {testDiscordStatus.msg && (
-                <div className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
-                  testDiscordStatus.success ? 'bg-emerald-950/60 border border-emerald-500/30 text-emerald-300' : 'bg-rose-950/60 border border-rose-500/30 text-rose-300'
-                }`}>
-                  {testDiscordStatus.success ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                  <span>{testDiscordStatus.msg}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'line' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div>
-                  <span className="text-xs font-bold text-slate-200">เปิดใช้งานแจ้งเตือนผ่าน LINE</span>
-                  <p className="text-[11px] text-slate-500">แจ้งเตือนเข้ากลุ่มกิลด์ หรือแชทส่วนตัว</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={localSettings.lineEnabled}
-                  onChange={(e) => setLocalSettings({ ...localSettings, lineEnabled: e.target.checked })}
-                  className="w-4 h-4 accent-emerald-500 rounded"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  LINE Notify / Webhook URL
-                </label>
-                <input
-                  type="text"
-                  placeholder="https://notify-api.line.me/api/notify หรือ Webhook URL"
-                  value={localSettings.lineWebhookUrl}
-                  onChange={(e) => setLocalSettings({ ...localSettings, lineWebhookUrl: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
-                />
-                <p className="text-[11px] text-slate-500 mt-1">
-                  รองรับทั้ง LINE Notify API หรือ Incoming Webhook ของ LINE Messaging API
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleTestLine}
-                disabled={testLineStatus.loading}
-                className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-emerald-600/30 transition"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>{testLineStatus.loading ? 'กำลังส่งทดสอบ...' : 'ทดสอบส่งข้อความเข้า LINE'}</span>
-              </button>
-
-              {testLineStatus.msg && (
-                <div className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
-                  testLineStatus.success ? 'bg-emerald-950/60 border border-emerald-500/30 text-emerald-300' : 'bg-rose-950/60 border border-rose-500/30 text-rose-300'
-                }`}>
-                  {testLineStatus.success ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                  <span>{testLineStatus.msg}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'server' && (
-            <div className="space-y-4">
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Server className="w-4 h-4 text-blue-400" />
-                  <span className="text-xs font-bold text-slate-200">
-                    ตั้งค่ารหัสและชื่อเซิร์ฟเวอร์ (ปรับเปลี่ยนได้ตลอดเวลา)
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  เช่น วันนี้เซิร์ฟหลักเป็น <strong>T3</strong> เซิร์ฟรองเป็น <strong>B9</strong> พรุ่งนี้อาจจะเปลี่ยนเป็นเซิร์ฟอื่น สามารถแก้ไขได้ทันที และระบบจะอัปเดตป้ายชื่อบอสทุกตัวให้โดยอัตโนมัติ
-                </p>
-              </div>
-
-              {/* Main Server Tag */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                <label className="text-xs font-semibold text-blue-300 flex items-center justify-between">
-                  <span>รหัสเซิร์ฟเวอร์หลัก (Main Server Tag)</span>
-                  <span className="text-[10px] text-slate-500">ปัจจุบัน: {localSettings.mainServerTag || 'T3'}</span>
-                </label>
-                <div className="flex items-center gap-2">
+                {/* Discord Webhook */}
+                <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-indigo-300">Discord Webhook</span>
+                    <button
+                      onClick={() => setLocalSettings({ ...localSettings, discordEnabled: !localSettings.discordEnabled })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        localSettings.discordEnabled ? 'bg-indigo-600' : 'bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          localSettings.discordEnabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                   <input
-                    type="text"
-                    value={localSettings.mainServerTag || 'T3'}
-                    onChange={(e) => setLocalSettings({ ...localSettings, mainServerTag: e.target.value.toUpperCase() })}
-                    placeholder="เช่น T3, T1, Main"
-                    className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono font-bold text-blue-200 focus:outline-none focus:border-blue-500 uppercase"
+                    type="url"
+                    placeholder="https://discord.com/api/webhooks/..."
+                    value={localSettings.discordWebhookUrl}
+                    onChange={(e) => setLocalSettings({ ...localSettings, discordWebhookUrl: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-hidden focus:border-indigo-500"
                   />
-                  <div className="flex gap-1">
-                    {['T3', 'T1', 'T2', 'Main'].map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => setLocalSettings({ ...localSettings, mainServerTag: tag })}
-                        className="px-2 py-1 bg-slate-800 hover:bg-blue-600 hover:text-white rounded text-[11px] font-mono text-slate-300 border border-slate-700 transition"
-                      >
-                        {tag}
-                      </button>
-                    ))}
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      disabled={testDiscordStatus.loading || !localSettings.discordWebhookUrl}
+                      onClick={handleTestDiscord}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{testDiscordStatus.loading ? (currentLang === 'en' ? 'Sending...' : 'กำลังส่ง...') : (currentLang === 'en' ? 'Test Discord' : 'ทดสอบส่ง Discord')}</span>
+                    </button>
+                    {testDiscordStatus.msg && (
+                      <span className={`text-xs ${testDiscordStatus.success ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {testDiscordStatus.msg}
+                      </span>
+                    )}
                   </div>
                 </div>
-              </div>
 
-              {/* Sub Server Tag */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                <label className="text-xs font-semibold text-purple-300 flex items-center justify-between">
-                  <span>รหัสเซิร์ฟเวอร์รอง (Sub Server Tag)</span>
-                  <span className="text-[10px] text-slate-500">ปัจจุบัน: {localSettings.subServerTag || 'B9'}</span>
-                </label>
-                <div className="flex items-center gap-2">
+                {/* LINE Webhook */}
+                <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-emerald-400">LINE Notify / Webhook</span>
+                    <button
+                      onClick={() => setLocalSettings({ ...localSettings, lineEnabled: !localSettings.lineEnabled })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        localSettings.lineEnabled ? 'bg-emerald-500' : 'bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          localSettings.lineEnabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                   <input
-                    type="text"
-                    value={localSettings.subServerTag || 'B9'}
-                    onChange={(e) => setLocalSettings({ ...localSettings, subServerTag: e.target.value.toUpperCase() })}
-                    placeholder="เช่น B9, S1, B1, W4"
-                    className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono font-bold text-purple-200 focus:outline-none focus:border-purple-500 uppercase"
+                    type="url"
+                    placeholder="https://api.line.me/..."
+                    value={localSettings.lineWebhookUrl}
+                    onChange={(e) => setLocalSettings({ ...localSettings, lineWebhookUrl: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-hidden focus:border-emerald-500"
                   />
-                  <div className="flex gap-1">
-                    {['B9', 'B1', 'B2', 'S1', 'W4'].map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => setLocalSettings({ ...localSettings, subServerTag: tag })}
-                        className="px-2 py-1 bg-slate-800 hover:bg-purple-600 hover:text-white rounded text-[11px] font-mono text-slate-300 border border-slate-700 transition"
-                      >
-                        {tag}
-                      </button>
-                    ))}
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      disabled={testLineStatus.loading || !localSettings.lineWebhookUrl}
+                      onClick={handleTestLine}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{testLineStatus.loading ? (currentLang === 'en' ? 'Sending...' : 'กำลังส่ง...') : (currentLang === 'en' ? 'Test LINE' : 'ทดสอบส่ง LINE')}</span>
+                    </button>
+                    {testLineStatus.msg && (
+                      <span className={`text-xs ${testLineStatus.success ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {testLineStatus.msg}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+
+          </div>
         </div>
 
-        {/* Footer (Fixed at bottom) */}
-        <div className="p-3 sm:p-4 border-t border-slate-800 bg-slate-950 flex flex-wrap items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-slate-400">เสียงที่เลือก:</span>
-            <span className="font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-              {localSettings.soundType === 'tts_thai' 
-                ? '🗣️ เสียงพูดภาษาไทย' 
-                : localSettings.soundType === 'synth_chime' 
-                ? 'กระดิ่งสังเคราะห์' 
-                : localSettings.soundType === 'warning_siren'
-                ? 'ไซเรนเตือนภัย'
-                : localSettings.soundType === 'horn'
-                ? 'แตรสัญญาณ'
-                : localSettings.soundType === '8bit'
-                ? 'เกมเรโทร 8-Bit'
-                : localSettings.soundType === 'sci_fi'
-                ? 'ไฮเทค ไซไฟ'
-                : 'ไฟล์เสียงของตัวเอง'}
-            </span>
-          </div>
+        {/* Modal Bottom Footer */}
+        <div className="px-5 py-3.5 border-t border-slate-800 bg-slate-950/90 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => handleTestSound()}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 text-xs font-bold transition border border-slate-700/80"
+          >
+            <Play className="w-4 h-4" />
+            <span>{t.testSoundBtn}</span>
+          </button>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleTestSound}
-              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
-              title="ทดสอบฟังเสียงที่เลือกตอนนี้"
-            >
-              <Volume2 className="w-3.5 h-3.5" />
-              <span>ทดลองฟัง</span>
-            </button>
-            <button
-              type="button"
               onClick={onClose}
-              className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
             >
-              ยกเลิก
+              {t.cancel}
             </button>
             <button
               type="button"
-              onClick={handleSave}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-lg shadow-amber-600/40 transition active:scale-95"
+              onClick={handleSaveAndClose}
+              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition shadow-md shadow-amber-500/20 active:scale-95"
             >
               <Save className="w-4 h-4" />
-              <span>บันทึกการตั้งค่า</span>
+              <span>{t.saveSettings}</span>
             </button>
           </div>
         </div>
+
       </div>
     </div>
   );

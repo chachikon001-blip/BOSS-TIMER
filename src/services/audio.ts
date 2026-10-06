@@ -3,6 +3,8 @@
  * Supports Web Audio Synthesizer, custom audio uploads, and Multi-language / Thai-only Text-To-Speech (TTS)
  */
 
+import { getApiUrl } from './apiConfig';
+
 export type TTSLanguageOption = 'thai_only' | 'english_only' | 'all';
 
 let audioCtx: AudioContext | null = null;
@@ -235,6 +237,7 @@ export function extractBossName(rawName: string, lang: TTSLanguageOption = 'thai
 
 let activeUtterance: SpeechSynthesisUtterance | null = null;
 let cachedVoices: SpeechSynthesisVoice[] = [];
+let currentTtsAudio: HTMLAudioElement | null = null;
 
 if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
   const loadVoices = () => {
@@ -251,9 +254,78 @@ if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
 }
 
 /**
- * Text-to-Speech synthesis with voice and rate control
+ * Streamed High-Quality Online Voice (Natural human pronunciation via Google TTS proxy)
+ * Works reliably on ALL platforms (Windows, iOS, Android, Mac) without needing OS voice packs!
  */
-export function speakText(
+export function speakOnlineTTS(
+  text: string, 
+  lang: string = 'th', 
+  volume: number = 0.9
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      if (typeof window === 'undefined' || !text) {
+        return resolve(false);
+      }
+      if (currentTtsAudio) {
+        currentTtsAudio.pause();
+        currentTtsAudio.src = '';
+        currentTtsAudio = null;
+      }
+
+      const url = getApiUrl(`/api/tts?text=${encodeURIComponent(text)}&lang=${encodeURIComponent(lang)}`);
+      const audio = new Audio(url);
+      currentTtsAudio = audio;
+      audio.volume = Math.max(0, Math.min(1, volume));
+
+      let resolved = false;
+      const finish = (ok: boolean) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(ok);
+        }
+      };
+
+      // Timeout fallback in case network is down
+      const timer = setTimeout(() => {
+        finish(false);
+      }, 5000);
+
+      audio.onplay = () => {
+        clearTimeout(timer);
+        finish(true);
+      };
+      audio.onended = () => {
+        clearTimeout(timer);
+        currentTtsAudio = null;
+        finish(true);
+      };
+      audio.onerror = () => {
+        clearTimeout(timer);
+        currentTtsAudio = null;
+        finish(false);
+      };
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          clearTimeout(timer);
+          finish(false);
+        });
+      }
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+/**
+ * Dual-Engine Text-to-Speech synthesis:
+ * Tier 1: Natural High-Quality Audio Stream (/api/tts)
+ * Tier 2: Browser SpeechSynthesis (Offline fallback)
+ * Tier 3: Web Audio Synthesizer Chime (Zero-fail fallback)
+ */
+export async function speakText(
   text: string, 
   options: { 
     volume?: number; 
@@ -261,54 +333,74 @@ export function speakText(
     lang?: string;
   } = {}
 ) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  try {
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume();
-    }
-    window.speechSynthesis.cancel();
+  if (typeof window === 'undefined' || !text) return;
+  const vol = options.volume !== undefined ? Math.max(0, Math.min(1, options.volume)) : 0.9;
+  const targetLang = options.lang || 'th-TH';
+  const shortLang = targetLang.toLowerCase().startsWith('en') ? 'en' : 'th';
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    activeUtterance = utterance;
-
-    const targetLang = options.lang || 'th-TH';
-    utterance.lang = targetLang;
-    utterance.volume = options.volume !== undefined ? Math.max(0, Math.min(1, options.volume)) : 0.9;
-    utterance.rate = options.rate ?? 1.05;
-
-    // Refresh voices if empty
-    if (cachedVoices.length === 0) {
-      cachedVoices = window.speechSynthesis.getVoices();
-    }
-
-    // Pick appropriate voice
-    const matchedVoice = cachedVoices.find(v => {
-      const vLang = v.lang.toLowerCase().replace('_', '-');
-      const tLang = targetLang.toLowerCase().replace('_', '-');
-      return vLang === tLang || vLang.startsWith(tLang.slice(0, 2)) || v.name.toLowerCase().includes('thai');
-    });
-
-    if (matchedVoice) {
-      utterance.voice = matchedVoice;
-    }
-
-    utterance.onend = () => {
-      activeUtterance = null;
-    };
-    utterance.onerror = (e) => {
-      console.warn('SpeechSynthesis error:', e);
-      activeUtterance = null;
-    };
-
-    window.speechSynthesis.speak(utterance);
-
-    // Keep active
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume();
-    }
-  } catch (err) {
-    console.warn('TTS error:', err);
+  // 1. First Priority: Online Natural Human TTS (Guarantees authentic Thai pronunciation on all devices)
+  const played = await speakOnlineTTS(text, shortLang, vol);
+  if (played) {
+    return;
   }
+
+  // 2. Second Priority: Browser SpeechSynthesis (if offline)
+  if ('speechSynthesis' in window) {
+    try {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      activeUtterance = utterance;
+
+      utterance.lang = targetLang;
+      utterance.volume = vol;
+      utterance.rate = options.rate ?? 1.05;
+
+      if (cachedVoices.length === 0) {
+        cachedVoices = window.speechSynthesis.getVoices();
+      }
+
+      const matchedVoice = cachedVoices.find(v => {
+        const vLang = (v.lang || '').toLowerCase().replace('_', '-');
+        const tLang = targetLang.toLowerCase().replace('_', '-');
+        return vLang === tLang || vLang.startsWith(tLang.slice(0, 2)) || (v.name || '').toLowerCase().includes('thai');
+      });
+
+      if (matchedVoice) {
+        utterance.voice = matchedVoice;
+      }
+
+      utterance.onend = () => {
+        activeUtterance = null;
+      };
+      utterance.onerror = (e) => {
+        activeUtterance = null;
+        // Don't warn for user interrupts or cancels
+        const errType = (e as any)?.error;
+        if (errType !== 'canceled' && errType !== 'interrupted') {
+          try {
+            playSynthChime(vol);
+          } catch {}
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
+
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+      return;
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Third Priority: Web Audio Chime (Never miss an alert)
+  try {
+    playSynthChime(vol);
+  } catch {}
 }
 
 export function speakThai(text: string, volume = 0.8, rate = 1.05) {

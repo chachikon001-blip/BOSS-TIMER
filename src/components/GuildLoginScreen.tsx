@@ -93,15 +93,21 @@ export const GuildLoginScreen: React.FC<GuildLoginScreenProps> = ({
 
       if (typeof res === 'object') {
         if (res.success) {
-          setSuccessMsg(res.message || 'สร้าง ID และเข้าสู่ระบบเรียบร้อยแล้ว!');
-          // Auto login immediately
-          await onLogin(regUsername, password);
+          if (res.isPending) {
+            setSuccessMsg(res.message || 'สมัครสมาชิกสำเร็จ! บัญชีของคุณอยู่ระหว่างรอแอดมินอนุมัติ กรุณาติดต่อแอดมินเพื่อเปิดใช้งาน');
+            setPassword('');
+            setMode('login');
+          } else {
+            setSuccessMsg(res.message || 'สร้าง ID และเข้าสู่ระบบเรียบร้อยแล้ว!');
+            await onLogin(regUsername, password);
+          }
         } else {
           setErrorMsg(res.message || 'ไม่สามารถลงทะเบียนได้ ชื่อผู้ใช้นี้อาจมีในระบบแล้ว');
         }
       } else if (res) {
-        setSuccessMsg('สร้าง ID และเข้าสู่ระบบเรียบร้อยแล้ว!');
-        await onLogin(regUsername, password);
+        setSuccessMsg('สมัครสมาชิกสำเร็จ! บัญชีของคุณอยู่ระหว่างรอแอดมินอนุมัติ');
+        setPassword('');
+        setMode('login');
       } else {
         setErrorMsg('ไม่สามารถลงทะเบียนได้ ชื่อผู้ใช้นี้อาจมีในระบบแล้ว');
       }

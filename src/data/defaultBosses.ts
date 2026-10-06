@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS: NotificationSettings = {
   browserPushEnabled: true,
   mainServerTag: 'T3',
   subServerTag: 'S1',
+  appLanguage: 'th',
 };
 
 export const INITIAL_ADMIN_USER: UserAccount = {
