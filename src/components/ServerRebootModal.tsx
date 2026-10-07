@@ -77,10 +77,15 @@ export const ServerRebootModal: React.FC<ServerRebootModalProps> = ({
 
   const [rebootDate, setRebootDate] = useState<string>(getTodayBkk());
   const [rebootTime, setRebootTime] = useState<string>(getTimeBkk());
-  const [unmatchedMode, setUnmatchedMode] = useState<'respawn_cycle' | 'immediate' | 'clear'>('respawn_cycle');
   const [syncToSheet, setSyncToSheet] = useState<boolean>(true);
   const [searchFilter, setSearchFilter] = useState<string>('');
-  const [customHours, setCustomHours] = useState<Record<string, number>>({});
+  const [customHours, setCustomHours] = useState<Record<string, number | undefined>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('boss_custom_reboot_hours') || '{}');
+    } catch {
+      return {};
+    }
+  });
   const [loading, setLoading] = useState<boolean>(false);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -97,38 +102,22 @@ export const ServerRebootModal: React.FC<ServerRebootModalProps> = ({
       const customH = customHours[boss.id];
       const hasRule = rule !== null;
 
-      let effectiveHours = customH !== undefined 
+      const effectiveHours = customH !== undefined 
         ? customH 
         : hasRule 
           ? rule.hours 
-          : (boss.respawnMinutes / 60);
+          : undefined;
 
       // Handle spawn time calculation
-      let calculatedTime = '-';
+      let calculatedTime = '--:--';
       let calculatedDate = '-';
       let nextSpawnIso: string | null = null;
 
-      if (hasRule || customH !== undefined) {
+      if (effectiveHours !== undefined && effectiveHours > 0) {
         const res = calculateRebootSpawnTime(rebootDate, rebootTime, effectiveHours);
         calculatedTime = res.formattedTime;
         calculatedDate = res.formattedDate;
         nextSpawnIso = res.spawnIso;
-      } else {
-        if (unmatchedMode === 'respawn_cycle') {
-          const res = calculateRebootSpawnTime(rebootDate, rebootTime, boss.respawnMinutes / 60);
-          calculatedTime = res.formattedTime;
-          calculatedDate = res.formattedDate;
-          nextSpawnIso = res.spawnIso;
-        } else if (unmatchedMode === 'immediate') {
-          const res = calculateRebootSpawnTime(rebootDate, rebootTime, 0);
-          calculatedTime = res.formattedTime;
-          calculatedDate = res.formattedDate;
-          nextSpawnIso = res.spawnIso;
-        } else {
-          calculatedTime = 'ยังไม่ระบุ';
-          calculatedDate = '-';
-          nextSpawnIso = null;
-        }
       }
 
       return {
@@ -141,7 +130,7 @@ export const ServerRebootModal: React.FC<ServerRebootModalProps> = ({
         nextSpawnIso,
       };
     });
-  }, [filteredBosses, customHours, rebootDate, rebootTime, unmatchedMode]);
+  }, [filteredBosses, customHours, rebootDate, rebootTime]);
 
   // Search filter
   const displayedPreview = useMemo(() => {
@@ -419,34 +408,31 @@ export const ServerRebootModal: React.FC<ServerRebootModalProps> = ({
             </button>
           </div>
 
-          {/* Section 2: Strategy for Unmatched Small Bosses */}
+          {/* Section 2: Strategy Notice */}
           <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
             <div>
-              <span className="font-bold text-slate-300">บอสทั่วไปที่ไม่มีในตารางช่อง P:</span>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                (เช่น เทมเพสต์, เชอร์ทูบา, เมดูซ่า, เฟลิส ที่ไม่มีระบุในช่อง O & P)
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-amber-300">⚙️ การคำนวณเวลาหลังรีบูท:</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  บอส 27 ตัวหลัก +ชม. ตามช่อง P อัตโนมัติ
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                บอสที่ไม่มีใน 27 ตัวนี้จะตั้งเวลาเป็น <strong className="text-slate-300 font-mono">--:--</strong> ไว้ก่อน โดยสามารถพิมพ์ระบุจำนวน <strong className="text-amber-300">+ชม.</strong> ในตารางด้านล่างได้ทันทีและปรับแก้ได้ตลอดเวลา
               </p>
             </div>
-            <div className="flex gap-1.5 self-stretch sm:self-auto">
-              {[
-                { id: 'respawn_cycle', label: '+รอบเกิดปกติ (ชม.)' },
-                { id: 'immediate', label: 'เกิดทันที' },
-                { id: 'clear', label: 'รอระบุเวลา' },
-              ].map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setUnmatchedMode(opt.id as any)}
-                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition ${
-                    unmatchedMode === opt.id
-                      ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            {Object.keys(customHours).length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomHours({});
+                  try { localStorage.removeItem('boss_custom_reboot_hours'); } catch {}
+                }}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-[11px] border border-slate-700 transition shrink-0"
+              >
+                ↺ ล้างค่าที่กำหนดเอง
+              </button>
+            )}
           </div>
 
           {/* Section 3: Live Preview Table */}
@@ -473,7 +459,7 @@ export const ServerRebootModal: React.FC<ServerRebootModalProps> = ({
             </div>
 
             {/* Table */}
-            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/60 max-h-60 overflow-y-auto">
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/60 max-h-64 overflow-y-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-900 text-slate-400 border-b border-slate-800 sticky top-0 z-10 text-[11px]">
                   <tr>
@@ -485,11 +471,13 @@ export const ServerRebootModal: React.FC<ServerRebootModalProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-mono">
                   {displayedPreview.map((item) => {
-                    const { boss, rule, hasRule, effectiveHours, calculatedTime, calculatedDate } = item;
+                    const { boss, rule, hasRule, effectiveHours, calculatedTime, calculatedDate, nextSpawnIso } = item;
+                    const isCustom = customHours[boss.id] !== undefined;
+
                     return (
                       <tr key={boss.id} className="hover:bg-slate-900/40 transition">
                         <td className="p-2 font-sans font-medium text-slate-200">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{boss.name}</span>
                             {rule?.probColor === 'green' && (
                               <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-sans">
@@ -512,18 +500,40 @@ export const ServerRebootModal: React.FC<ServerRebootModalProps> = ({
                           {boss.serverTag || (boss.server === 'main' ? mainServerTag : subServerTag)}
                         </td>
                         <td className="p-2 text-center">
-                          <div className="inline-flex items-center gap-1 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                            <span className={hasRule ? 'text-amber-300 font-bold' : 'text-slate-400'}>
-                              +{effectiveHours} ชม.
-                            </span>
-                            {hasRule && (
-                              <span className="text-[10px] text-emerald-400 font-bold">ช่อง P</span>
+                          <div className="inline-flex items-center gap-1 bg-slate-900 px-2 py-0.5 rounded border border-slate-700">
+                            <span className="text-slate-400 text-xs font-bold">+</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="168"
+                              step="0.5"
+                              placeholder="--"
+                              value={isCustom ? (customHours[boss.id] ?? '') : (hasRule ? (rule?.hours ?? '') : '')}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                                setCustomHours((prev) => {
+                                  const next = { ...prev, [boss.id]: val };
+                                  try {
+                                    localStorage.setItem('boss_custom_reboot_hours', JSON.stringify(next));
+                                  } catch {}
+                                  return next;
+                                });
+                              }}
+                              className="w-12 bg-slate-950 border border-slate-700 focus:border-amber-400 rounded px-1 py-0.5 text-xs text-amber-300 font-bold text-center font-mono focus:outline-none"
+                              title="พิมพ์จำนวนชั่วโมงที่ต้องการบวกหลังรีบูทได้ทันที"
+                            />
+                            <span className="text-slate-400 text-xs">ชม.</span>
+                            {hasRule && !isCustom && (
+                              <span className="text-[10px] text-emerald-400 font-bold ml-1">ช่อง P</span>
+                            )}
+                            {isCustom && (
+                              <span className="text-[10px] text-cyan-400 font-bold ml-1">กำหนดเอง</span>
                             )}
                           </div>
                         </td>
                         <td className="p-2 text-right">
-                          <div className="font-bold text-emerald-400">
-                            {calculatedTime} น.
+                          <div className={`font-bold ${nextSpawnIso ? 'text-emerald-400' : 'text-slate-500 font-mono'}`}>
+                            {calculatedTime}{nextSpawnIso ? ' น.' : ''}
                           </div>
                           <div className="text-[10px] text-slate-500">{calculatedDate}</div>
                         </td>

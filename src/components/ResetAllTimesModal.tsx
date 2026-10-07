@@ -62,35 +62,35 @@ export const ResetAllTimesModal: React.FC<ResetAllTimesModalProps> = ({
     setLoading(true);
     setStatusMsg(null);
 
-    try {
-      // 1. Call server API
-      const res = await fetch(getApiUrl('/api/bosses/reset-times'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          server: targetServer,
-          resetBy: currentUserName,
-        }),
-      });
+    // 1. Immediately compute locally updated bosses so the reset always works
+    const updatedBosses: Boss[] = bosses.map((b) => {
+      if (targetServer === 'all' || b.server === targetServer) {
+        return {
+          ...b,
+          nextSpawnAt: null,
+          lastKilledAt: null,
+          notifiedStages: [],
+        };
+      }
+      return b;
+    });
 
-      if (!res.ok) {
-        throw new Error('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์เพื่อรีเซ็ตเวลาได้');
+    try {
+      // 2. Call server API
+      try {
+        await fetch(getApiUrl('/api/bosses/reset-times'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            server: targetServer,
+            resetBy: currentUserName,
+          }),
+        });
+      } catch (apiErr) {
+        console.warn('API reset-times notice:', apiErr);
       }
 
-      const resData = await res.json();
-      const updatedBosses: Boss[] = resData.bosses || bosses.map((b) => {
-        if (targetServer === 'all' || b.server === targetServer) {
-          return {
-            ...b,
-            nextSpawnAt: null,
-            lastKilledAt: null,
-            notifiedStages: [],
-          };
-        }
-        return b;
-      });
-
-      // 2. Sync to Google Sheets if requested
+      // 3. Sync to Google Sheets if requested
       if (syncToSheet && sheetConfig?.sheetId) {
         try {
           const token = await getAccessToken();
@@ -113,7 +113,7 @@ export const ResetAllTimesModal: React.FC<ResetAllTimesModalProps> = ({
 
       setTimeout(() => {
         onClose();
-      }, 1000);
+      }, 800);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการรีเซ็ตเวลา';
       setStatusMsg({ type: 'error', text: msg });

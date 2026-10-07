@@ -2,6 +2,7 @@ import React from 'react';
 import { Boss } from '../types/boss';
 import { formatRemainingTime, formatDateTimeThai } from '../utils/time';
 import { getBossColorInfo } from '../utils/bossColorMap';
+import { translations, AppLanguage } from '../utils/translations';
 import { 
   MapPin, 
   Clock, 
@@ -23,6 +24,7 @@ interface BossCardProps {
   onTogglePin?: (bossId: string) => void;
   onTestSound?: (boss: Boss) => void;
   onQuickUpdateTime?: (bossId: string, newTimeStr: string | null) => void;
+  appLanguage?: AppLanguage;
 }
 
 export const BossCard: React.FC<BossCardProps> = ({
@@ -32,7 +34,9 @@ export const BossCard: React.FC<BossCardProps> = ({
   onTogglePin,
   onTestSound,
   onQuickUpdateTime,
+  appLanguage = 'th',
 }) => {
+  const t = translations[appLanguage] || translations.th;
   const timeInfo = formatRemainingTime(boss.nextSpawnAt);
 
   // Calculate cooldown progress percentage
@@ -229,12 +233,12 @@ export const BossCard: React.FC<BossCardProps> = ({
       <div className="p-4 pt-1 space-y-2.5">
         <div className="flex items-center justify-between text-[11px] text-slate-400">
           <div className="truncate">
-            <span>ตายล่าสุด: </span>
+            <span>{appLanguage === 'en' ? 'Last Killed: ' : 'ตายล่าสุด: '}</span>
             <span className="text-slate-300 font-mono-num">{formatDateTimeThai(boss.lastKilledAt)}</span>
           </div>
           {boss.killedBy && (
-            <span className="text-slate-400 truncate max-w-[90px]" title={`บันทึกโดย ${boss.killedBy}`}>
-              โดย: {boss.killedBy}
+            <span className="text-slate-400 truncate max-w-[90px]" title={`${appLanguage === 'en' ? 'Recorded by' : 'บันทึกโดย'} ${boss.killedBy}`}>
+              {appLanguage === 'en' ? 'By: ' : 'โดย: '}{boss.killedBy}
             </span>
           )}
         </div>
@@ -264,7 +268,7 @@ export const BossCard: React.FC<BossCardProps> = ({
           className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-red-600/90 via-rose-600/90 to-red-700 hover:from-red-500 hover:to-rose-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-red-950/50 flex items-center justify-center gap-2 transition transform active:scale-[0.98]"
         >
           <Skull className="w-4 h-4" />
-          <span>ตายแล้ว (บันทึกเวลานี้)</span>
+          <span>{appLanguage === 'en' ? 'Killed (Record this time)' : 'ตายแล้ว (บันทึกเวลานี้)'}</span>
         </button>
       </div>
     </div>

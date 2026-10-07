@@ -28,3 +28,61 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(245, 158, 11, 0.6);
 }
+
+/* Warm Cream Soft Light Theme (สว่างออกนวลๆ สบายตา) */
+.theme-light {
+  background-color: #f7f5f0 !important;
+  color: #292524 !important;
+}
+
+.theme-light header {
+  background-color: rgba(246, 243, 236, 0.96) !important;
+  border-color: #e5ded3 !important;
+}
+
+.theme-light .bg-slate-900,
+.theme-light .bg-slate-950,
+.theme-light .bg-\[\#0d111c\],
+.theme-light .bg-\[\#090d16\] {
+  background-color: #ffffff !important;
+  border-color: #e5ded3 !important;
+  color: #292524 !important;
+}
+
+.theme-light .border-slate-800,
+.theme-light .border-slate-700 {
+  border-color: #e5ded3 !important;
+}
+
+.theme-light .text-slate-100,
+.theme-light .text-slate-200 {
+  color: #1c1917 !important;
+}
+
+.theme-light .text-slate-300,
+.theme-light .text-slate-400 {
+  color: #57534e !important;
+}
+
+.theme-light .text-slate-500 {
+  color: #78716c !important;
+}
+
+.theme-light input,
+.theme-light select {
+  background-color: #fcfbf9 !important;
+  border-color: #dcd4c7 !important;
+  color: #1c1917 !important;
+}
+
+.theme-light thead,
+.theme-light thead tr {
+  background-color: #f5f1e8 !important;
+  color: #44403c !important;
+  border-color: #e5ded3 !important;
+}
+
+.theme-light tbody tr:hover {
+  background-color: #faf7f2 !important;
+}
+

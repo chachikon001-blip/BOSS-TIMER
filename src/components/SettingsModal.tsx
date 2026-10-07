@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { NotificationSettings } from '../types/boss';
+import { NotificationSettings, UserAccount } from '../types/boss';
 import { 
   X, 
   Volume2, 
   VolumeX,
   Languages,
   Clock, 
-  Server, 
   Wrench, 
   Send, 
   Check, 
@@ -18,10 +17,14 @@ import {
   TableProperties, 
   RotateCcw,
   Sparkles,
-  Info
+  Info,
+  Lock,
+  ListOrdered,
+  BellRing
 } from 'lucide-react';
 import { playBossAlert } from '../services/audio';
 import { translations } from '../utils/translations';
+import { getApiUrl } from '../services/apiConfig';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -30,9 +33,10 @@ interface SettingsModalProps {
   onSave: (newSettings: NotificationSettings) => void;
   onOpenSheets?: () => void;
   onOpenReboot?: () => void;
+  currentUser?: UserAccount | null;
 }
 
-type TabType = 'audio' | 'language' | 'stages' | 'server' | 'tools' | 'webhooks';
+type TabType = 'audio' | 'language' | 'discord' | 'line' | 'tools';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -41,10 +45,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSave,
   onOpenSheets,
   onOpenReboot,
+  currentUser,
 }) => {
   const [localSettings, setLocalSettings] = useState<NotificationSettings>({ ...settings });
   const [activeTab, setActiveTab] = useState<TabType>('audio');
-  const [testDiscordStatus, setTestDiscordStatus] = useState<{ loading: boolean; msg?: string; success?: boolean }>({ loading: false });
+  
+  // Test statuses
+  const [testDiscordTop30Status, setTestDiscordTop30Status] = useState<{ loading: boolean; msg?: string; success?: boolean }>({ loading: false });
+  const [testDiscordSpawnStatus, setTestDiscordSpawnStatus] = useState<{ loading: boolean; msg?: string; success?: boolean }>({ loading: false });
   const [testLineStatus, setTestLineStatus] = useState<{ loading: boolean; msg?: string; success?: boolean }>({ loading: false });
 
   // Sync state when modal opens
@@ -56,9 +64,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   if (!isOpen) return null;
 
+  const isAdmin = currentUser?.role === 'admin';
   const currentLang = localSettings.appLanguage || 'th';
   const t = translations[currentLang] || translations.th;
 
+  // Toggle stage in Sound & Voice tab
   const handleStageToggle = (stage: number) => {
     const stages = localSettings.notifyAtMinutes || [10, 5, 3, 1];
     let nextStages: number[];
@@ -68,6 +78,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       nextStages = [...stages, stage].sort((a, b) => b - a);
     }
     setLocalSettings({ ...localSettings, notifyAtMinutes: nextStages });
+  };
+
+  // Toggle Discord Spawn Minutes
+  const handleDiscordSpawnMinuteToggle = (stage: number) => {
+    const stages = localSettings.discordSpawnMinutes || [10, 5, 3, 1];
+    let nextStages: number[];
+    if (stages.includes(stage)) {
+      nextStages = stages.filter(s => s !== stage);
+    } else {
+      nextStages = [...stages, stage].sort((a, b) => b - a);
+    }
+    setLocalSettings({ ...localSettings, discordSpawnMinutes: nextStages });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,49 +132,125 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose();
   };
 
-  const handleTestDiscord = async () => {
-    if (!localSettings.discordWebhookUrl) {
-      setTestDiscordStatus({ loading: false, success: false, msg: currentLang === 'en' ? 'Please enter Discord Webhook URL' : 'กรุณากรอก Discord Webhook URL' });
+  // Test Discord Room 1: Send Top 30
+  const handleTestDiscordTop30 = async () => {
+    const url = localSettings.discordTop30WebhookUrl || localSettings.discordWebhookUrl;
+    if (!url) {
+      setTestDiscordTop30Status({ 
+        loading: false, 
+        success: false, 
+        msg: currentLang === 'en' ? 'Please enter Discord Webhook URL for Top 30' : 'กรุณากรอก Webhook URL สำหรับบอส 30 ตัว' 
+      });
       return;
     }
-    setTestDiscordStatus({ loading: true });
+    setTestDiscordTop30Status({ loading: true });
     try {
-      const res = await fetch('/api/test-webhook', {
+      const res = await fetch(getApiUrl('/api/discord/send-top30'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'discord', url: localSettings.discordWebhookUrl }),
+        body: JSON.stringify({ url }),
       });
       const data = await res.json();
       if (res.ok) {
-        setTestDiscordStatus({ loading: false, success: true, msg: currentLang === 'en' ? 'Sent to Discord successfully!' : 'ส่งเข้า Discord เรียบร้อยแล้ว!' });
+        setTestDiscordTop30Status({ 
+          loading: false, 
+          success: true, 
+          msg: currentLang === 'en' ? 'Top 30 list sent to Discord successfully!' : 'ส่งรายชื่อ 30 ตัวเข้า Discord เรียบร้อยแล้ว!' 
+        });
       } else {
-        setTestDiscordStatus({ loading: false, success: false, msg: data.error || (currentLang === 'en' ? 'Send failed' : 'ส่งไม่สำเร็จ') });
+        setTestDiscordTop30Status({ 
+          loading: false, 
+          success: false, 
+          msg: data.error || (currentLang === 'en' ? 'Send failed' : 'ส่งไม่สำเร็จ') 
+        });
       }
     } catch {
-      setTestDiscordStatus({ loading: false, success: false, msg: currentLang === 'en' ? 'Connection failed' : 'การเชื่อมต่อผิดพลาด' });
+      setTestDiscordTop30Status({ 
+        loading: false, 
+        success: false, 
+        msg: currentLang === 'en' ? 'Connection failed' : 'การเชื่อมต่อผิดพลาด' 
+      });
     }
   };
 
+  // Test Discord Room 2: Impending Spawn Alert
+  const handleTestDiscordSpawn = async () => {
+    const url = localSettings.discordSpawnWebhookUrl || localSettings.discordWebhookUrl;
+    if (!url) {
+      setTestDiscordSpawnStatus({ 
+        loading: false, 
+        success: false, 
+        msg: currentLang === 'en' ? 'Please enter Discord Webhook URL for Spawn Alerts' : 'กรุณากรอก Webhook URL สำหรับเตือนบอสเกิด' 
+      });
+      return;
+    }
+    setTestDiscordSpawnStatus({ loading: true });
+    try {
+      const res = await fetch(getApiUrl('/api/test-webhook'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'discord', url }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTestDiscordSpawnStatus({ 
+          loading: false, 
+          success: true, 
+          msg: currentLang === 'en' ? 'Spawn alert test sent to Discord!' : 'ส่งแจ้งเตือนบอสเกิดเข้า Discord เรียบร้อยแล้ว!' 
+        });
+      } else {
+        setTestDiscordSpawnStatus({ 
+          loading: false, 
+          success: false, 
+          msg: data.error || (currentLang === 'en' ? 'Send failed' : 'ส่งไม่สำเร็จ') 
+        });
+      }
+    } catch {
+      setTestDiscordSpawnStatus({ 
+        loading: false, 
+        success: false, 
+        msg: currentLang === 'en' ? 'Connection failed' : 'การเชื่อมต่อผิดพลาด' 
+      });
+    }
+  };
+
+  // Test LINE Webhook
   const handleTestLine = async () => {
     if (!localSettings.lineWebhookUrl) {
-      setTestLineStatus({ loading: false, success: false, msg: currentLang === 'en' ? 'Please enter LINE Webhook URL' : 'กรุณากรอก LINE Webhook URL' });
+      setTestLineStatus({ 
+        loading: false, 
+        success: false, 
+        msg: currentLang === 'en' ? 'Please enter LINE Webhook URL' : 'กรุณากรอก LINE Webhook URL' 
+      });
       return;
     }
     setTestLineStatus({ loading: true });
     try {
-      const res = await fetch('/api/test-webhook', {
+      const res = await fetch(getApiUrl('/api/test-webhook'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'line', url: localSettings.lineWebhookUrl }),
       });
       const data = await res.json();
       if (res.ok) {
-        setTestLineStatus({ loading: false, success: true, msg: currentLang === 'en' ? 'Sent to LINE successfully!' : 'ส่งเข้า LINE เรียบร้อยแล้ว!' });
+        setTestLineStatus({ 
+          loading: false, 
+          success: true, 
+          msg: currentLang === 'en' ? 'Sent to LINE successfully!' : 'ส่งเข้า LINE เรียบร้อยแล้ว!' 
+        });
       } else {
-        setTestLineStatus({ loading: false, success: false, msg: data.error || (currentLang === 'en' ? 'Send failed' : 'ส่งไม่สำเร็จ') });
+        setTestLineStatus({ 
+          loading: false, 
+          success: false, 
+          msg: data.error || (currentLang === 'en' ? 'Send failed' : 'ส่งไม่สำเร็จ') 
+        });
       }
     } catch {
-      setTestLineStatus({ loading: false, success: false, msg: currentLang === 'en' ? 'Connection failed' : 'การเชื่อมต่อผิดพลาด' });
+      setTestLineStatus({ 
+        loading: false, 
+        success: false, 
+        msg: currentLang === 'en' ? 'Connection failed' : 'การเชื่อมต่อผิดพลาด' 
+      });
     }
   };
 
@@ -166,13 +264,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     { id: 'custom', title: t.soundCustom, desc: currentLang === 'en' ? 'Upload your own MP3/WAV file' : 'อัปโหลดไฟล์เสียง MP3/WAV ของคุณเอง' },
   ];
 
+  // Defined vertical tabs: Sound (with 10, 5, 3, 1), Language, Discord, LINE, Tools
   const tabs = [
     { id: 'audio' as TabType, label: t.tabSound, icon: Volume2, color: 'text-amber-400' },
     { id: 'language' as TabType, label: t.tabLanguage, icon: Languages, color: 'text-blue-400' },
-    { id: 'stages' as TabType, label: t.tabStages, icon: Clock, color: 'text-emerald-400' },
-    { id: 'server' as TabType, label: t.tabServerTags, icon: Server, color: 'text-purple-400' },
+    { id: 'discord' as TabType, label: t.tabDiscord, icon: Send, color: 'text-indigo-400' },
+    { id: 'line' as TabType, label: t.tabLine, icon: BellRing, color: 'text-emerald-400' },
     { id: 'tools' as TabType, label: t.tabTools, icon: Wrench, color: 'text-cyan-400' },
-    { id: 'webhooks' as TabType, label: t.tabWebhooks, icon: Send, color: 'text-indigo-400' },
   ];
 
   return (
@@ -207,12 +305,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <Info className="w-4 h-4 flex-shrink-0 text-indigo-400" />
           <span>
             {currentLang === 'en'
-              ? 'Personal settings (sound, language, alert stages) are saved strictly in your browser and do NOT overwrite other guild members.'
-              : 'การตั้งค่าส่วนตัว (เสียง, ภาษา, ช่วงเวลานาที) บันทึกเฉพาะในเครื่องของคุณ จะไม่ซิงค์ทับเพื่อนร่วมกิลด์'}
+              ? 'Personal settings (sound, voice volume, language) are stored on your device only. Only boss spawn times are synced across the guild.'
+              : 'การตั้งค่าส่วนตัว (เสียง, การอ่านออกเสียง, ภาษา) บันทึกเฉพาะในเครื่องของคุณ — สิ่งที่ซิงค์กับกิลด์จะมีเพียงเวลาเกิดของบอสเท่านั้น'}
           </span>
         </div>
 
-        {/* Modal Body: Vertical Navigation Layout */}
+        {/* Modal Body: Clean Vertical Sidebar Layout */}
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
           
           {/* Vertical Sidebar Tabs */}
@@ -240,7 +338,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Tab Content Panel */}
           <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-slate-900/60 space-y-6">
             
-            {/* 1. SOUND & TTS TAB */}
+            {/* 1. SOUND & VOICE TAB (INCLUDES 10, 5, 3, 1 SPAWN TIME CHOICES AS REQUESTED) */}
             {activeTab === 'audio' && (
               <div className="space-y-6 animate-fadeIn">
                 <div className="border-b border-slate-800 pb-3">
@@ -249,7 +347,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {t.tabSound}
                   </h3>
                   <p className="text-xs text-slate-400 mt-1">
-                    {currentLang === 'en' ? 'Configure voice readout, sound effects and volumes' : 'กำหนดเสียงแจ้งเตือน เสียงพูดสังเคราะห์ภาษาไทย และระดับความดัง'}
+                    {currentLang === 'en' 
+                      ? 'Configure voice readout, sound alert effects, volume, and notification intervals' 
+                      : 'กำหนดเสียงแจ้งเตือน เสียงพูดสังเคราะห์ภาษาไทย ระดับเสียง และระยะเวลานาทีที่ต้องการให้เตือน'}
                   </p>
                 </div>
 
@@ -263,7 +363,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div className="text-sm font-bold text-slate-200">{t.enableSound}</div>
                       <div className="text-xs text-slate-400">
                         {localSettings.enabled 
-                          ? (currentLang === 'en' ? 'Sound is currently active' : 'เปิดใช้งานเสียงเตือนแล้ว') 
+                          ? (currentLang === 'en' ? 'Voice and sound alerts are active' : 'เปิดใช้งานเสียงเตือนและเสียงพูดแล้ว') 
                           : (currentLang === 'en' ? 'Muted' : 'ปิดเสียงเตือนอยู่')}
                       </div>
                     </div>
@@ -283,6 +383,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       }`}
                     />
                   </button>
+                </div>
+
+                {/* Notification Stages (10, 5, 3, 1 mins) PLACED DIRECTLY INSIDE SOUND CATEGORY AS REQUESTED */}
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-amber-300 flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-amber-400" />
+                      <span>{t.soundStagesTitle}</span>
+                    </label>
+                    <span className="text-[11px] text-amber-400/80 font-semibold">
+                      {currentLang === 'en' ? 'Click to toggle' : 'คลิกเปิด/ปิดแต่ละช่วงเวลา'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {[10, 5, 3, 1].map((stage) => {
+                      const active = (localSettings.notifyAtMinutes || [10, 5, 3, 1]).includes(stage);
+                      return (
+                        <button
+                          key={stage}
+                          type="button"
+                          onClick={() => handleStageToggle(stage)}
+                          className={`p-3 rounded-xl border font-bold text-xs sm:text-sm flex flex-col items-center justify-center gap-1 transition ${
+                            active
+                              ? 'bg-amber-500/25 text-amber-300 border-amber-500/60 shadow-sm'
+                              : 'bg-slate-800/60 text-slate-500 border-slate-700/60 hover:text-slate-300'
+                          }`}
+                        >
+                          <span className="text-sm font-black">{stage} {currentLang === 'en' ? 'mins' : 'นาที'}</span>
+                          <span className="text-[10px] font-semibold opacity-90">
+                            {active 
+                              ? (currentLang === 'en' ? '✓ Active' : '✓ แจ้งเตือน') 
+                              : (currentLang === 'en' ? 'Off' : 'ปิด')}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    {currentLang === 'en' 
+                      ? 'When a boss reaches the selected minutes, the system will speak out and chime on your device.'
+                      : 'เมื่อบอสใกล้เกิดถึงเวลาที่เลือก ระบบจะอ่านออกเสียงและส่งสัญญาณเตือนทันที'}
+                  </p>
                 </div>
 
                 {/* Volume Slider */}
@@ -479,113 +621,262 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             )}
 
-            {/* 3. NOTIFICATION STAGES TAB */}
-            {activeTab === 'stages' && (
+            {/* 3. DISCORD WEBHOOK TAB (SEPARATED, DUAL-ROOM CHANNELS, ADMIN ONLY) */}
+            {activeTab === 'discord' && (
               <div className="space-y-6 animate-fadeIn">
-                <div className="border-b border-slate-800 pb-3">
-                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-emerald-400" />
-                    {t.tabStages}
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {currentLang === 'en' ? 'Select which minutes before spawn will trigger alert voices and notifications' : 'เลือกระยะเวลานาทีก่อนบอสเกิดที่ต้องการให้อ่านออกเสียงเตือน'}
-                  </p>
+                <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                      <Send className="w-5 h-5 text-indigo-400" />
+                      {t.tabDiscord}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {currentLang === 'en' 
+                        ? 'Two separate Discord rooms: One for Top 30 Nearest Bosses list, and another for Upcoming Spawn Alerts' 
+                        : 'แยก 2 ห้อง Discord: ห้องที่ 1 สำหรับรายงานบอส 30 ตัวที่ใกล้ที่สุด, ห้องที่ 2 สำหรับแจ้งเตือนบอสที่กำลังจะเกิด'}
+                    </p>
+                  </div>
+                  {!isAdmin && (
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[11px] font-bold">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>{currentLang === 'en' ? 'Admin Only' : 'เฉพาะแอดมิน'}</span>
+                    </span>
+                  )}
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-xs font-bold text-slate-300 block">
-                    {t.stagesTitle}
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[10, 5, 3, 1].map((stage) => {
-                      const active = (localSettings.notifyAtMinutes || []).includes(stage);
-                      return (
-                        <button
-                          key={stage}
-                          type="button"
-                          onClick={() => handleStageToggle(stage)}
-                          className={`p-3.5 rounded-xl border font-bold text-xs sm:text-sm flex flex-col items-center justify-center gap-1 transition ${
-                            active
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm'
-                              : 'bg-slate-800/60 text-slate-500 border-slate-700/60 hover:text-slate-300'
-                          }`}
-                        >
-                          <span>{stage} {currentLang === 'en' ? 'mins' : 'นาที'}</span>
-                          <span className="text-[11px] font-normal opacity-90">
-                            {active ? (currentLang === 'en' ? '✓ Active' : '✓ แจ้งเตือน') : (currentLang === 'en' ? 'Off' : 'ปิด')}
-                          </span>
-                        </button>
-                      );
-                    })}
+                {!isAdmin && (
+                  <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800/50 flex items-center gap-2.5 text-xs text-rose-300">
+                    <Lock className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>{t.adminOnlyNotice}</span>
+                  </div>
+                )}
+
+                {/* ROOM 1: 30 NEAREST BOSSES WEBHOOK */}
+                <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 rounded-lg bg-indigo-500/20 text-indigo-400">
+                        <ListOrdered className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-indigo-300">{t.discordChannel1Title}</div>
+                        <div className="text-xs text-slate-400">{t.discordChannel1Desc}</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!isAdmin}
+                      onClick={() => setLocalSettings({ ...localSettings, discordTop30Enabled: !localSettings.discordTop30Enabled })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        localSettings.discordTop30Enabled ? 'bg-indigo-600' : 'bg-slate-700'
+                      } ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          localSettings.discordTop30Enabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <input
+                    type="url"
+                    disabled={!isAdmin}
+                    placeholder={currentLang === 'en' ? 'https://discord.com/api/webhooks/... (Webhook Channel 1: Top 30 Bosses)' : 'https://discord.com/api/webhooks/... (Webhook ห้องที่ 1: บอส 30 ตัว)'}
+                    value={localSettings.discordTop30WebhookUrl || ''}
+                    onChange={(e) => setLocalSettings({ ...localSettings, discordTop30WebhookUrl: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-hidden focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      disabled={!isAdmin || testDiscordTop30Status.loading || !localSettings.discordTop30WebhookUrl}
+                      onClick={handleTestDiscordTop30}
+                      className="px-3.5 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{testDiscordTop30Status.loading ? (currentLang === 'en' ? 'Sending...' : 'กำลังส่ง...') : t.discordSendTop30Btn}</span>
+                    </button>
+                    {testDiscordTop30Status.msg && (
+                      <span className={`text-xs ${testDiscordTop30Status.success ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {testDiscordTop30Status.msg}
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {/* Browser Desktop Push */}
-                <div className="flex items-center justify-between p-4 rounded-xl bg-slate-800/50 border border-slate-700/60">
-                  <div>
-                    <div className="text-sm font-bold text-slate-200">{t.browserPush}</div>
-                    <div className="text-xs text-slate-400">
-                      {currentLang === 'en' ? 'Show desktop system notification banner' : 'แสดงป๊อปอัปแจ้งเตือนบนหน้าจอบราวเซอร์'}
+                {/* ROOM 2: UPCOMING BOSS SPAWN ALERTS WEBHOOK (10, 5, 3, 1 MINS) */}
+                <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 rounded-lg bg-rose-500/20 text-rose-400">
+                        <BellRing className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-rose-300">{t.discordChannel2Title}</div>
+                        <div className="text-xs text-slate-400">{t.discordChannel2Desc}</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!isAdmin}
+                      onClick={() => setLocalSettings({ ...localSettings, discordSpawnEnabled: !localSettings.discordSpawnEnabled })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        localSettings.discordSpawnEnabled ? 'bg-rose-600' : 'bg-slate-700'
+                      } ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          localSettings.discordSpawnEnabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <input
+                    type="url"
+                    disabled={!isAdmin}
+                    placeholder={currentLang === 'en' ? 'https://discord.com/api/webhooks/... (Webhook Channel 2: Spawn Alerts)' : 'https://discord.com/api/webhooks/... (Webhook ห้องที่ 2: เตือนบอสเกิด)'}
+                    value={localSettings.discordSpawnWebhookUrl || localSettings.discordWebhookUrl || ''}
+                    onChange={(e) => setLocalSettings({ 
+                      ...localSettings, 
+                      discordSpawnWebhookUrl: e.target.value,
+                      discordWebhookUrl: e.target.value 
+                    })}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-hidden focus:border-rose-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+
+                  {/* Impending Spawn Minutes Checkboxes (10, 5, 3, 1 mins) */}
+                  <div className="pt-2">
+                    <label className="text-xs font-bold text-slate-300 block mb-2">
+                      {t.discordSpawnStagesTitle}
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[10, 5, 3, 1].map((stage) => {
+                        const active = (localSettings.discordSpawnMinutes || [10, 5, 3, 1]).includes(stage);
+                        return (
+                          <button
+                            key={stage}
+                            type="button"
+                            disabled={!isAdmin}
+                            onClick={() => handleDiscordSpawnMinuteToggle(stage)}
+                            className={`p-2.5 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                              active
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-xs'
+                                : 'bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-300'
+                            } ${!isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}
+                          >
+                            <span>{stage} {currentLang === 'en' ? 'mins' : 'นาที'}</span>
+                            <span className="text-[10px] opacity-80">{active ? '✓' : ''}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                  <button
-                    onClick={() => setLocalSettings({ ...localSettings, browserPushEnabled: !localSettings.browserPushEnabled })}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      localSettings.browserPushEnabled ? 'bg-emerald-500' : 'bg-slate-700'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        localSettings.browserPushEnabled ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      disabled={!isAdmin || testDiscordSpawnStatus.loading || (!localSettings.discordSpawnWebhookUrl && !localSettings.discordWebhookUrl)}
+                      onClick={handleTestDiscordSpawn}
+                      className="px-3.5 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-600 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{testDiscordSpawnStatus.loading ? (currentLang === 'en' ? 'Sending...' : 'กำลังส่ง...') : (currentLang === 'en' ? 'Test Spawn Alert' : 'ทดสอบส่งแจ้งเตือนบอสเกิด')}</span>
+                    </button>
+                    {testDiscordSpawnStatus.msg && (
+                      <span className={`text-xs ${testDiscordSpawnStatus.success ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {testDiscordSpawnStatus.msg}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* 4. SERVER TAGS TAB */}
-            {activeTab === 'server' && (
+            {/* 4. LINE WEBHOOK TAB (SEPARATED, ADMIN ONLY) */}
+            {activeTab === 'line' && (
               <div className="space-y-6 animate-fadeIn">
-                <div className="border-b border-slate-800 pb-3">
-                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                    <Server className="w-5 h-5 text-purple-400" />
-                    {t.tabServerTags}
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {currentLang === 'en' ? 'Set server prefix tags (e.g. T3, S1, B9)' : 'กำหนดรหัสหรือชื่อย่อของเซิร์ฟเวอร์หลักและเซิร์ฟเวอร์รอง'}
-                  </p>
+                <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                      <BellRing className="w-5 h-5 text-emerald-400" />
+                      {t.tabLine}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {currentLang === 'en' 
+                        ? 'Send boss spawn notifications to LINE Notify or LINE Messaging API' 
+                        : 'ส่งการแจ้งเตือนบอสเกิดไปยังห้องแชท LINE หรือกลุ่มไลน์กิลด์'}
+                    </p>
+                  </div>
+                  {!isAdmin && (
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[11px] font-bold">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>{currentLang === 'en' ? 'Admin Only' : 'เฉพาะแอดมิน'}</span>
+                    </span>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2 p-4 rounded-xl bg-slate-800/50 border border-slate-700">
-                    <label className="text-xs font-bold text-slate-300 block">
-                      {currentLang === 'en' ? 'Main Server Tag (e.g. T3)' : 'รหัสเซิร์ฟเวอร์หลัก (เช่น T3)'}
-                    </label>
-                    <input
-                      type="text"
-                      value={localSettings.mainServerTag || 'T3'}
-                      onChange={(e) => setLocalSettings({ ...localSettings, mainServerTag: e.target.value.toUpperCase() })}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-amber-400 font-bold focus:outline-hidden focus:border-amber-500"
-                    />
+                {!isAdmin && (
+                  <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800/50 flex items-center gap-2.5 text-xs text-rose-300">
+                    <Lock className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>{t.adminOnlyNotice}</span>
                   </div>
+                )}
 
-                  <div className="space-y-2 p-4 rounded-xl bg-slate-800/50 border border-slate-700">
-                    <label className="text-xs font-bold text-slate-300 block">
-                      {currentLang === 'en' ? 'Sub Server Tag (e.g. S1 / B9)' : 'รหัสเซิร์ฟเวอร์รอง (เช่น S1 / B9)'}
-                    </label>
-                    <input
-                      type="text"
-                      value={localSettings.subServerTag || 'S1'}
-                      onChange={(e) => setLocalSettings({ ...localSettings, subServerTag: e.target.value.toUpperCase() })}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-amber-400 font-bold focus:outline-hidden focus:border-amber-500"
-                    />
+                <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-bold text-emerald-400">LINE Notify / Webhook</span>
+                      <p className="text-xs text-slate-400">
+                        {currentLang === 'en' ? 'Send impending boss spawn alerts to LINE' : 'ส่งแจ้งเตือนบอสใกล้เกิดเข้าไลน์'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!isAdmin}
+                      onClick={() => setLocalSettings({ ...localSettings, lineEnabled: !localSettings.lineEnabled })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        localSettings.lineEnabled ? 'bg-emerald-500' : 'bg-slate-700'
+                      } ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          localSettings.lineEnabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <input
+                    type="url"
+                    disabled={!isAdmin}
+                    placeholder={currentLang === 'en' ? 'https://notify-api.line.me/api/notify or Webhook URL' : 'https://notify-api.line.me/api/notify หรือ Webhook URL'}
+                    value={localSettings.lineWebhookUrl}
+                    onChange={(e) => setLocalSettings({ ...localSettings, lineWebhookUrl: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-hidden focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      disabled={!isAdmin || testLineStatus.loading || !localSettings.lineWebhookUrl}
+                      onClick={handleTestLine}
+                      className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{testLineStatus.loading ? (currentLang === 'en' ? 'Sending...' : 'กำลังส่ง...') : (currentLang === 'en' ? 'Test LINE' : 'ทดสอบส่ง LINE')}</span>
+                    </button>
+                    {testLineStatus.msg && (
+                      <span className={`text-xs ${testLineStatus.success ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {testLineStatus.msg}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 5. TOOLS TAB (SHARE LINK BUTTON REMOVED AS REQUESTED) */}
+            {/* 5. TOOLS TAB (NO SHARE LINK BUTTON) */}
             {activeTab === 'tools' && (
               <div className="space-y-4 animate-fadeIn">
                 <div className="border-b border-slate-800 pb-3">
@@ -635,7 +926,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div>
                         <div className="text-sm font-bold text-slate-100">{t.rebootServer}</div>
                         <div className="text-xs text-slate-400">
-                          {currentLang === 'en' ? 'Auto calculate boss spawn timers based on reboot time' : 'คำนวณและรีเซ็ตเวลาเกิดใหม่ของบอสทั้งเซิร์ฟเวอร์อัตโนมัติ'}
+                          {currentLang === 'en' ? 'Calculate boss spawn timers based on reboot time' : 'คำนวณและรีเซ็ตเวลาเกิดใหม่ของบอสทั้งเซิร์ฟเวอร์อัตโนมัติตามตารางเวลา'}
                         </div>
                       </div>
                     </div>
@@ -651,105 +942,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* 6. DISCORD & LINE WEBHOOKS TAB */}
-            {activeTab === 'webhooks' && (
-              <div className="space-y-6 animate-fadeIn">
-                <div className="border-b border-slate-800 pb-3">
-                  <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                    <Send className="w-5 h-5 text-indigo-400" />
-                    {t.tabWebhooks}
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {currentLang === 'en' ? 'Send boss spawn alert notifications to Discord channel or LINE' : 'ส่งการแจ้งเตือนบอสเกิดไปยังห้อง Discord หรือกลุ่ม LINE'}
-                  </p>
-                </div>
-
-                {/* Discord Webhook */}
-                <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-indigo-300">Discord Webhook</span>
-                    <button
-                      onClick={() => setLocalSettings({ ...localSettings, discordEnabled: !localSettings.discordEnabled })}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        localSettings.discordEnabled ? 'bg-indigo-600' : 'bg-slate-700'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          localSettings.discordEnabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  <input
-                    type="url"
-                    placeholder="https://discord.com/api/webhooks/..."
-                    value={localSettings.discordWebhookUrl}
-                    onChange={(e) => setLocalSettings({ ...localSettings, discordWebhookUrl: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-hidden focus:border-indigo-500"
-                  />
-                  <div className="flex items-center justify-between pt-1">
-                    <button
-                      type="button"
-                      disabled={testDiscordStatus.loading || !localSettings.discordWebhookUrl}
-                      onClick={handleTestDiscord}
-                      className="px-3 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>{testDiscordStatus.loading ? (currentLang === 'en' ? 'Sending...' : 'กำลังส่ง...') : (currentLang === 'en' ? 'Test Discord' : 'ทดสอบส่ง Discord')}</span>
-                    </button>
-                    {testDiscordStatus.msg && (
-                      <span className={`text-xs ${testDiscordStatus.success ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {testDiscordStatus.msg}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* LINE Webhook */}
-                <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-emerald-400">LINE Notify / Webhook</span>
-                    <button
-                      onClick={() => setLocalSettings({ ...localSettings, lineEnabled: !localSettings.lineEnabled })}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        localSettings.lineEnabled ? 'bg-emerald-500' : 'bg-slate-700'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          localSettings.lineEnabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  <input
-                    type="url"
-                    placeholder="https://api.line.me/..."
-                    value={localSettings.lineWebhookUrl}
-                    onChange={(e) => setLocalSettings({ ...localSettings, lineWebhookUrl: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-hidden focus:border-emerald-500"
-                  />
-                  <div className="flex items-center justify-between pt-1">
-                    <button
-                      type="button"
-                      disabled={testLineStatus.loading || !localSettings.lineWebhookUrl}
-                      onClick={handleTestLine}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>{testLineStatus.loading ? (currentLang === 'en' ? 'Sending...' : 'กำลังส่ง...') : (currentLang === 'en' ? 'Test LINE' : 'ทดสอบส่ง LINE')}</span>
-                    </button>
-                    {testLineStatus.msg && (
-                      <span className={`text-xs ${testLineStatus.success ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {testLineStatus.msg}
-                      </span>
-                    )}
-                  </div>
-                </div>
               </div>
             )}
 

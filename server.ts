@@ -32,6 +32,11 @@ interface NotificationSettings {
   ttsLanguage?: 'thai_only' | 'english_only' | 'all';
   ttsSpeed?: number;
   customSoundUrl?: string;
+  discordTop30WebhookUrl?: string;
+  discordTop30Enabled?: boolean;
+  discordSpawnWebhookUrl?: string;
+  discordSpawnEnabled?: boolean;
+  discordSpawnMinutes?: number[];
   discordWebhookUrl: string;
   discordEnabled: boolean;
   lineWebhookUrl: string;
@@ -39,6 +44,7 @@ interface NotificationSettings {
   browserPushEnabled: boolean;
   mainServerTag?: string;
   subServerTag?: string;
+  appLanguage?: 'th' | 'en';
 }
 
 interface SheetConfig {
@@ -80,6 +86,11 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   soundVolume: 0.8,
   ttsLanguage: 'thai_only',
   ttsSpeed: 1.05,
+  discordTop30WebhookUrl: '',
+  discordTop30Enabled: true,
+  discordSpawnWebhookUrl: '',
+  discordSpawnEnabled: true,
+  discordSpawnMinutes: [10, 5, 3, 1],
   discordWebhookUrl: '',
   discordEnabled: true,
   lineWebhookUrl: '',
@@ -87,6 +98,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   browserPushEnabled: true,
   mainServerTag: 'T3',
   subServerTag: 'S1',
+  appLanguage: 'th',
 };
 
 const INITIAL_ADMIN_USER: UserAccount = {
@@ -273,9 +285,14 @@ function broadcastSSE(type: string, data: unknown) {
   }
 }
 
-// Discord Webhook Dispatcher
+// Discord Webhook Dispatcher (Room 2: Upcoming Boss Spawns: 10, 5, 3, 1 mins)
 async function sendDiscordNotification(boss: Boss, stage: number) {
-  if (!state.settings.discordEnabled || !state.settings.discordWebhookUrl) return;
+  const webhookUrl = state.settings.discordSpawnWebhookUrl || state.settings.discordWebhookUrl;
+  const isEnabled = state.settings.discordSpawnEnabled ?? state.settings.discordEnabled;
+  if (!isEnabled || !webhookUrl) return;
+
+  const allowedStages = state.settings.discordSpawnMinutes || state.settings.notifyAtMinutes || [10, 5, 3, 1];
+  if (!allowedStages.includes(stage)) return;
 
   const serverLabel = boss.serverTag || (boss.server === 'main' ? (state.settings.mainServerTag || 'เซิร์ฟหลัก') : (state.settings.subServerTag || 'เซิร์ฟรอง'));
   const spawnTime = boss.nextSpawnAt ? new Date(boss.nextSpawnAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : 'เร็วๆ นี้';
@@ -306,7 +323,7 @@ async function sendDiscordNotification(boss: Boss, stage: number) {
   };
 
   try {
-    await fetch(state.settings.discordWebhookUrl, {
+    await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -315,7 +332,77 @@ async function sendDiscordNotification(boss: Boss, stage: number) {
       }),
     });
   } catch (err) {
-    console.error('Failed to send Discord webhook:', err);
+    console.error('Failed to send Discord spawn webhook:', err);
+  }
+}
+
+// Discord Webhook Dispatcher (Room 1: Top 30 Nearest Bosses)
+async function dispatchDiscordTop30(webhookUrl: string) {
+  if (!webhookUrl) return false;
+
+  const now = Date.now();
+  // Sort bosses: Alive first, then closest upcoming spawn, then without spawn time
+  const sorted = [...state.bosses].sort((a, b) => {
+    const timeA = a.nextSpawnAt ? new Date(a.nextSpawnAt).getTime() : Infinity;
+    const timeB = b.nextSpawnAt ? new Date(b.nextSpawnAt).getTime() : Infinity;
+    const diffA = timeA - now;
+    const diffB = timeB - now;
+
+    const isAliveA = diffA <= 0 && a.nextSpawnAt !== null;
+    const isAliveB = diffB <= 0 && b.nextSpawnAt !== null;
+
+    if (isAliveA && !isAliveB) return -1;
+    if (!isAliveA && isAliveB) return 1;
+
+    return timeA - timeB;
+  });
+
+  const top30 = sorted.slice(0, 30);
+  const nowBkk = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+
+  const lines = top30.map((b, idx) => {
+    const tag = b.serverTag || (b.server === 'main' ? (state.settings.mainServerTag || 'T3') : (state.settings.subServerTag || 'S1'));
+    if (!b.nextSpawnAt) {
+      return `\`${String(idx + 1).padStart(2, '0')}.\` ⏳ **${b.name}** [${tag}] • \`--:--\` • ${b.location || '-'}`;
+    }
+    const spawnMs = new Date(b.nextSpawnAt).getTime();
+    const diffSec = Math.floor((spawnMs - now) / 1000);
+    const spawnClock = new Date(b.nextSpawnAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+
+    if (diffSec <= 0) {
+      return `\`${String(idx + 1).padStart(2, '0')}.\` 🟢 **${b.name}** [${tag}] • **เกิดแล้ว!** (${spawnClock}) • ${b.location || '-'}`;
+    } else if (diffSec <= 900) {
+      const mins = Math.ceil(diffSec / 60);
+      return `\`${String(idx + 1).padStart(2, '0')}.\` 🟡 **${b.name}** [${tag}] • **ในอีก ${mins} นาที** (${spawnClock}) • ${b.location || '-'}`;
+    } else {
+      const h = Math.floor(diffSec / 3600);
+      const m = Math.floor((diffSec % 3600) / 60);
+      const timeStr = h > 0 ? `${h}ชม. ${m}น.` : `${m}น.`;
+      return `\`${String(idx + 1).padStart(2, '0')}.\` ⏳ **${b.name}** [${tag}] • **${spawnClock}** (อีก ${timeStr}) • ${b.location || '-'}`;
+    }
+  });
+
+  const embed = {
+    title: `⚔️ [รายงานบอส 30 ตัวที่ใกล้ที่สุด] • ${nowBkk} GMT+7`,
+    description: lines.join('\n'),
+    color: 0x3b82f6,
+    footer: { text: `Boss Timer Pro • สมาชิกติดตาม ${state.bosses.length} ตัว` },
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: `📋 **[รายชื่อบอส 30 ตัวที่ใกล้เกิดที่สุด]** อัปเดตเวลา ${nowBkk}`,
+        embeds: [embed],
+      }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error('Failed to dispatch Discord Top 30:', err);
+    return false;
   }
 }
 
@@ -660,15 +747,7 @@ app.post('/api/server/reboot', (req: Request, res: Response) => {
   } = req.body;
 
   if (Array.isArray(incomingBosses) && incomingBosses.length > 0) {
-    if (server === 'all') {
-      state.bosses = incomingBosses;
-    } else {
-      // Merge by ID to guarantee no duplicates
-      const bossMap = new Map<string, Boss>();
-      state.bosses.forEach(b => bossMap.set(b.id, b));
-      incomingBosses.forEach(b => bossMap.set(b.id, b));
-      state.bosses = Array.from(bossMap.values());
-    }
+    state.bosses = incomingBosses;
   }
 
   persistState();
@@ -836,6 +915,25 @@ app.post('/api/test-webhook', async (req: Request, res: Response) => {
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อ';
     res.status(500).json({ error: errorMsg });
+  }
+});
+
+// Manual / Triggered Dispatch for 30 Nearest Bosses to Discord
+app.post('/api/discord/send-top30', async (req: Request, res: Response) => {
+  const { url } = req.body;
+  const targetUrl = url || state.settings.discordTop30WebhookUrl || state.settings.discordWebhookUrl;
+  if (!targetUrl) {
+    return res.status(400).json({ error: 'กรุณากรอก Webhook URL สำหรับบอส 30 ตัว' });
+  }
+
+  try {
+    const success = await dispatchDiscordTop30(targetUrl);
+    if (!success) {
+      return res.status(500).json({ error: 'ส่งรายชื่อบอส 30 ตัวเข้า Discord ไม่สำเร็จ ตรวจสอบ URL' });
+    }
+    res.json({ success: true, message: 'ส่งรายชื่อบอส 30 ตัวที่ใกล้ที่สุดเข้า Discord เรียบร้อยแล้ว!' });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการส่ง' });
   }
 });
 
@@ -1079,16 +1177,34 @@ app.post('/api/sheets/sync', async (req: Request, res: Response) => {
     }
 
     if (updatedBosses.length > 0) {
-      if (target === 'all') {
-        state.bosses = updatedBosses;
-      } else {
-        const otherBosses = state.bosses.filter(b => b.server !== target);
-        state.bosses = [...otherBosses, ...updatedBosses];
+      // Intelligently merge: do not wipe existing active or reboot timers with nulls from empty sheet cells
+      const bossMap = new Map<string, Boss>();
+      state.bosses.forEach(b => bossMap.set(b.id, b));
+      for (const updated of updatedBosses) {
+        const existing = bossMap.get(updated.id) || Array.from(bossMap.values()).find(b => b.name === updated.name && b.server === updated.server);
+        if (existing) {
+          const isRebooted = (existing.notes && existing.notes.includes('รีบูท')) || (existing.killedBy && existing.killedBy.includes('รีบูท'));
+          const shouldKeepExistingTimer = (!updated.nextSpawnAt && existing.nextSpawnAt) ||
+            (isRebooted && (!updated.lastKilledAt || new Date(updated.lastKilledAt).getTime() <= new Date(existing.lastKilledAt || 0).getTime()));
+
+          bossMap.set(existing.id, {
+            ...existing,
+            ...updated,
+            nextSpawnAt: shouldKeepExistingTimer ? existing.nextSpawnAt : updated.nextSpawnAt,
+            lastKilledAt: shouldKeepExistingTimer ? existing.lastKilledAt : updated.lastKilledAt,
+            killedBy: shouldKeepExistingTimer ? existing.killedBy : updated.killedBy,
+            notes: shouldKeepExistingTimer ? existing.notes : updated.notes,
+            pinned: existing.pinned ?? updated.pinned,
+          });
+        } else {
+          bossMap.set(updated.id, updated);
+        }
       }
+      state.bosses = Array.from(bossMap.values());
       state.sheetConfig.lastSyncedAt = new Date().toISOString();
       persistState();
       broadcastSSE('state_update', state);
-      return res.json({ success: true, count: updatedBosses.length, bosses: state.bosses });
+      return res.json({ success: true, count: state.bosses.length, bosses: state.bosses });
     } else {
       return res.status(400).json({ error: 'ไม่พบข้อมูลบอสจากชีตที่ระบุ' });
     }
@@ -1129,6 +1245,25 @@ async function performAutoGoogleSheetSync() {
       for (const updated of updatedBosses) {
         const existing = state.bosses.find(b => b.id === updated.id || (b.name === updated.name && b.server === updated.server));
         if (existing) {
+          // CRITICAL: If sheet does NOT have a valid spawn time (i.e. updated.nextSpawnAt is null),
+          // DO NOT wipe out existing.nextSpawnAt if existing already has an active timer or reboot timer!
+          if (!updated.nextSpawnAt && existing.nextSpawnAt) {
+            continue;
+          }
+
+          // CRITICAL: If existing was set by server reboot, protect it from being overwritten by older sheet data!
+          const isRebooted = (existing.notes && existing.notes.includes('รีบูท')) || (existing.killedBy && existing.killedBy.includes('รีบูท'));
+          if (isRebooted) {
+            if (!updated.lastKilledAt || !updated.nextSpawnAt) {
+              continue;
+            }
+            const existingKilledTime = existing.lastKilledAt ? new Date(existing.lastKilledAt).getTime() : 0;
+            const updatedKilledTime = new Date(updated.lastKilledAt).getTime();
+            if (updatedKilledTime <= existingKilledTime) {
+              continue;
+            }
+          }
+
           if (existing.nextSpawnAt !== updated.nextSpawnAt || existing.lastKilledAt !== updated.lastKilledAt) {
             existing.nextSpawnAt = updated.nextSpawnAt;
             existing.lastKilledAt = updated.lastKilledAt;

@@ -122,13 +122,13 @@ export const Header: React.FC<HeaderProps> = ({
                     <>
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" />
                       <Wifi className="w-3 h-3 text-emerald-400" />
-                      <span>ออนไลน์ (ซิงค์คลาวด์)</span>
+                      <span>{t.online}</span>
                     </>
                   ) : (
                     <>
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                       <WifiOff className="w-3 h-3 text-amber-400" />
-                      <span>โหมดออฟไลน์</span>
+                      <span>{t.offline}</span>
                     </>
                   )}
                 </span>
@@ -222,18 +222,18 @@ export const Header: React.FC<HeaderProps> = ({
                 <div 
                   onClick={onOpenAuth}
                   className="cursor-pointer flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700"
-                  title="คลิกเพื่อดูโปรไฟล์"
+                  title={appLanguage === 'en' ? 'Click to view profile' : 'คลิกเพื่อดูโปรไฟล์'}
                 >
                   <div className={`w-2 h-2 rounded-full ${currentUser.role === 'admin' ? 'bg-amber-400 ring-2 ring-amber-400/20' : 'bg-blue-400'}`} />
                   <span className="max-w-[70px] sm:max-w-[100px] truncate">{currentUser.displayName || currentUser.username}</span>
                   {currentUser.role === 'admin' && (
-                    <span className="text-[10px] px-1 bg-amber-500/20 text-amber-300 rounded font-semibold">แอดมิน</span>
+                    <span className="text-[10px] px-1 bg-amber-500/20 text-amber-300 rounded font-semibold">{t.admin}</span>
                   )}
                 </div>
                 <button
                   onClick={onLogout}
                   className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition"
-                  title="ออกจากระบบ"
+                  title={t.logout}
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -244,7 +244,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition"
               >
                 <User className="w-3.5 h-3.5" />
-                <span>เข้าสู่ระบบ</span>
+                <span>{appLanguage === 'en' ? 'Login' : 'เข้าสู่ระบบ'}</span>
               </button>
             )}
           </div>

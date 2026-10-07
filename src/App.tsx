@@ -721,6 +721,7 @@ export default function App() {
     handleSaveBoss({
       id: bossId,
       nextSpawnAt: newTimeIso,
+      lastKilledAt: newTimeIso === null ? null : (targetBoss?.lastKilledAt || null),
       notifiedStages: [],
     });
     addNotification({
@@ -1280,7 +1281,7 @@ export default function App() {
   const pendingApprovalCount = users.filter(u => u.status === 'pending' || (!u.active && u.status !== 'rejected' && u.id !== 'admin-master')).length;
 
   return (
-    <div className={`min-h-screen ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-900 text-slate-100'}`}>
+    <div className={`min-h-screen ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'theme-light bg-[#f7f5f0] text-stone-900'} transition-colors duration-200`}>
       {/* Header */}
       <Header
         currentUser={currentUser}
@@ -1356,6 +1357,7 @@ export default function App() {
             onUpdateServerTag={handleUpdateServerTag}
             onOpenReboot={() => setIsRebootOpen(true)}
             onOpenResetAll={() => setIsResetAllOpen(true)}
+            appLanguage={settings.appLanguage || 'th'}
           />
         </div>
 
@@ -1384,6 +1386,7 @@ export default function App() {
               }
               onQuickUpdateTime={handleQuickUpdateTime}
               onOpenResetAll={() => setIsResetAllOpen(true)}
+              appLanguage={settings.appLanguage || 'th'}
             />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
@@ -1410,6 +1413,7 @@ export default function App() {
                     )
                   }
                   onQuickUpdateTime={handleQuickUpdateTime}
+                  appLanguage={settings.appLanguage || 'th'}
                 />
               ))}
             </div>

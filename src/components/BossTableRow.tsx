@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Boss } from '../types/boss';
 import { formatRemainingTime } from '../utils/time';
 import { getBossColorInfo } from '../utils/bossColorMap';
+import { AppLanguage } from '../utils/translations';
 import { 
   Star, 
   MapPin, 
@@ -23,6 +24,7 @@ interface BossTableRowProps {
   onTogglePin: (bossId: string) => void;
   onTestSound?: (boss: Boss) => void;
   onQuickUpdateTime?: (bossId: string, newTimeStr: string | null) => void;
+  appLanguage?: AppLanguage;
 }
 
 export const BossTableRow: React.FC<BossTableRowProps> = ({
@@ -32,6 +34,7 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
   onTogglePin,
   onTestSound,
   onQuickUpdateTime,
+  appLanguage = 'th',
 }) => {
   const timeInfo = formatRemainingTime(boss.nextSpawnAt);
   const isMain = boss.server === 'main';
@@ -75,16 +78,20 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
     const elapsedSec = Math.abs(timeInfo.diffSeconds);
     const hrs = Math.floor(elapsedSec / 3600);
     const mins = Math.floor((elapsedSec % 3600) / 60);
-    subStatusText = hrs > 0 ? `เกิดแล้ว (+${hrs} ชม. ${mins} นาที)` : `เกิดแล้ว (+${mins} นาที)`;
+    if (appLanguage === 'en') {
+      subStatusText = hrs > 0 ? `Alive (+${hrs}h ${mins}m)` : `Alive (+${mins}m)`;
+    } else {
+      subStatusText = hrs > 0 ? `เกิดแล้ว (+${hrs} ชม. ${mins} นาที)` : `เกิดแล้ว (+${mins} นาที)`;
+    }
     subStatusColor = 'text-rose-400';
   } else if (timeInfo.isSoon) {
-    subStatusText = `กำลังจะเกิด (อีก ${timeInfo.text})`;
+    subStatusText = appLanguage === 'en' ? `Soon (${timeInfo.text})` : `กำลังจะเกิด (อีก ${timeInfo.text})`;
     subStatusColor = 'text-amber-400 font-semibold';
   } else if (boss.nextSpawnAt) {
-    subStatusText = `นับถอยหลัง (${timeInfo.text})`;
+    subStatusText = appLanguage === 'en' ? `Countdown (${timeInfo.text})` : `นับถอยหลัง (${timeInfo.text})`;
     subStatusColor = 'text-slate-400';
   } else {
-    subStatusText = 'ยังไม่ระบุเวลา';
+    subStatusText = appLanguage === 'en' ? 'No time set' : 'ยังไม่ระบุเวลา';
     subStatusColor = 'text-slate-500';
   }
 
@@ -94,7 +101,7 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
       <td className="py-3 px-3 sm:px-4 w-10 text-center">
         <button
           onClick={() => onTogglePin(boss.id)}
-          title={boss.pinned ? 'ยกเลิกการปักหมุด' : 'ปักหมุดไว้บนสุด'}
+          title={boss.pinned ? (appLanguage === 'en' ? 'Unpin boss' : 'ยกเลิกการปักหมุด') : (appLanguage === 'en' ? 'Pin to top' : 'ปักหมุดไว้บนสุด')}
           className="transition transform active:scale-125 focus:outline-none"
         >
           <Star
@@ -132,10 +139,14 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
                   : 'bg-purple-500/10 text-purple-300 border border-purple-500/40'
               }`}
               onClick={() => onEdit(boss)}
-              title="คลิกเพื่อแก้ไขชื่อ/แท็กเซิร์ฟเวอร์"
+              title={appLanguage === 'en' ? 'Click to edit server name/tag' : 'คลิกเพื่อแก้ไขชื่อ/แท็กเซิร์ฟเวอร์'}
             >
               {isMain ? <ShieldAlert className="w-3 h-3" /> : <Swords className="w-3 h-3" />}
-              <span>{boss.serverTag ? `${isMain ? 'เซิร์ฟหลัก' : 'เซิร์ฟรอง'} [${boss.serverTag}]` : (isMain ? 'เซิร์ฟหลัก' : 'เซิร์ฟรอง')}</span>
+              <span>
+                {boss.serverTag 
+                  ? `${isMain ? (appLanguage === 'en' ? 'Main' : 'เซิร์ฟหลัก') : (appLanguage === 'en' ? 'Sub' : 'เซิร์ฟรอง')} [${boss.serverTag}]` 
+                  : (isMain ? (appLanguage === 'en' ? 'Main' : 'เซิร์ฟหลัก') : (appLanguage === 'en' ? 'Sub' : 'เซิร์ฟรอง'))}
+              </span>
             </span>
 
             {/* Spawn Chance Badge matching Google Sheet */}
@@ -153,7 +164,7 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
                       ? 'bg-amber-950/60 text-amber-300 border-amber-500/40'
                       : 'bg-rose-950/60 text-rose-300 border-rose-500/40'
                   }`}
-                  title={`โอกาสบอสเกิด ${chance}% (สีชีต: ${boss.spawnColor || colorInfo.spawnColor})`}
+                  title={`${appLanguage === 'en' ? 'Spawn Chance' : 'โอกาสบอสเกิด'} ${chance}% (${appLanguage === 'en' ? 'Sheet Color' : 'สีชีต'}: ${boss.spawnColor || colorInfo.spawnColor})`}
                 >
                   <span
                     className="w-1.5 h-1.5 rounded-full inline-block"
@@ -167,11 +178,11 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
             {/* Status Pill */}
             {timeInfo.isAlive ? (
               <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-rose-950/80 text-rose-300 border border-rose-800/60 animate-pulse">
-                เกิดแล้ว
+                {appLanguage === 'en' ? 'Alive' : 'เกิดแล้ว'}
               </span>
             ) : timeInfo.isSoon ? (
               <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-amber-950/80 text-amber-300 border border-amber-600/60 animate-bounce">
-                เร็วๆ นี้
+                {appLanguage === 'en' ? 'Soon' : 'เร็วๆ นี้'}
               </span>
             ) : null}
           </div>
@@ -179,9 +190,11 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
           {/* Subline: Location */}
           <div className="flex items-center gap-1 text-xs text-slate-400">
             <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-            <span className="truncate">{boss.location || 'ยังไม่ระบุสถานที่'}</span>
+            <span className="truncate">{boss.location || (appLanguage === 'en' ? 'Unknown location' : 'ยังไม่ระบุสถานที่')}</span>
             <span className="text-slate-600">•</span>
-            <span className="text-[11px] text-slate-500">รอบ {(boss.respawnMinutes / 60).toFixed(1)} ชม.</span>
+            <span className="text-[11px] text-slate-500">
+              {appLanguage === 'en' ? `Every ${(boss.respawnMinutes / 60).toFixed(1)} hrs` : `รอบ ${(boss.respawnMinutes / 60).toFixed(1)} ชม.`}
+            </span>
           </div>
         </div>
       </td>
@@ -287,17 +300,17 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
           <button
             onClick={() => onKillNow(boss.id)}
             className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-extrabold text-xs sm:text-sm shadow-md shadow-amber-500/20 active:scale-95 transition"
-            title="บันทึกเวลาบอสโดนเดี๋ยวนี้ (คำนวณรอบเกิดถัดไปทันที)"
+            title={appLanguage === 'en' ? 'Record boss death now and calculate next spawn' : 'บันทึกเวลาบอสโดนเดี๋ยวนี้ (คำนวณรอบเกิดถัดไปทันที)'}
           >
             <RotateCw className="w-3.5 h-3.5" />
-            <span>อัปเดต</span>
+            <span>{appLanguage === 'en' ? 'Update' : 'อัปเดต'}</span>
           </button>
 
           {/* Quick Adjust Button */}
           <button
             onClick={() => onEdit(boss)}
             className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-300 border border-slate-700 transition"
-            title="ปรับเวลาหรือรอบเกิด"
+            title={appLanguage === 'en' ? 'Adjust spawn time or interval' : 'ปรับเวลาหรือรอบเกิด'}
           >
             <Clock className="w-3.5 h-3.5" />
           </button>
@@ -307,10 +320,21 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
       {/* 5. เครื่องมือ */}
       <td className="py-3 px-2 sm:px-4 text-center whitespace-nowrap">
         <div className="flex items-center justify-center gap-1">
+          {/* Quick Reset Button in Tools column */}
+          {boss.nextSpawnAt && onQuickUpdateTime && (
+            <button
+              onClick={() => onQuickUpdateTime(boss.id, null)}
+              title={appLanguage === 'en' ? 'Reset spawn time to --:--' : 'รีเซ็ตเวลาเกิดกลับเป็น --:--'}
+              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded transition"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+            </button>
+          )}
+
           {onTestSound && (
             <button
               onClick={() => onTestSound(boss)}
-              title="ทดสอบเสียงเตือนบอสตัวนี้"
+              title={appLanguage === 'en' ? 'Test voice alert for this boss' : 'ทดสอบเสียงเตือนบอสตัวนี้'}
               className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded transition"
             >
               <Volume2 className="w-3.5 h-3.5" />
@@ -319,7 +343,7 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
 
           <button
             onClick={() => onEdit(boss)}
-            title="แก้ไขข้อมูลบอส"
+            title={appLanguage === 'en' ? 'Edit boss details' : 'แก้ไขข้อมูลบอส'}
             className="p-1.5 text-slate-400 hover:text-indigo-300 hover:bg-slate-800 rounded transition"
           >
             <Edit3 className="w-4 h-4" />

@@ -44,10 +44,24 @@ export interface NotificationSettings {
   ttsLanguage?: 'thai_only' | 'english_only' | 'all'; // ตัวเลือกภาษาการอ่าน: ไทยอย่างเดียว, อังกฤษอย่างเดียว, หรือทั้งหมด
   ttsSpeed?: number; // ความเร็วการอ่าน (default: 1.05)
   customSoundUrl?: string;
-  discordWebhookUrl: string;
-  discordEnabled: boolean;
+
+  // Discord Channel 1: Top 30 Nearest Bosses
+  discordTop30WebhookUrl?: string;
+  discordTop30Enabled?: boolean;
+
+  // Discord Channel 2: Impending Boss Spawn Alerts (10, 5, 3, 1 mins)
+  discordSpawnWebhookUrl?: string;
+  discordSpawnEnabled?: boolean;
+  discordSpawnMinutes?: number[]; // [10, 5, 3, 1]
+
+  // Backward-compatible Discord properties
+  discordWebhookUrl?: string;
+  discordEnabled?: boolean;
+
+  // LINE Channel
   lineWebhookUrl: string; // LINE notify or incoming webhook URL
   lineEnabled: boolean;
+
   browserPushEnabled: boolean;
   mainServerTag?: string; // default e.g. "T3"
   subServerTag?: string;  // default e.g. "S1"

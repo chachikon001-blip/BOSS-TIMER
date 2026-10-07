@@ -63,10 +63,10 @@ export const AddBossModal: React.FC<AddBossModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+        <div className="flex items-center justify-between p-4 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
             <PlusCircle className="w-5 h-5 text-amber-400" />
             <h2 className="text-base font-bold text-slate-100">เพิ่มบอสตัวใหม่</h2>
@@ -79,8 +79,8 @@ export const AddBossModal: React.FC<AddBossModalProps> = ({
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
+        {/* Form - Scrollable body */}
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
           {/* Server Selector & Tag */}
           <div className="space-y-2">
             <label className="block text-xs font-semibold text-slate-300">เซิร์ฟเวอร์ และ แท็ก</label>

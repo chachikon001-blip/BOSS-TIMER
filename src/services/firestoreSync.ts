@@ -76,12 +76,7 @@ export function subscribeToFirestoreUsers(
         const users: UserAccount[] = [];
         snapshot.forEach((docSnap) => {
           const u = docSnap.data() as UserAccount;
-          // If any user is in 'pending' status, automatically activate them in Firestore
-          if (u && (u.status === 'pending' || !u.active)) {
-            const activeUser: UserAccount = { ...u, status: 'active', active: true };
-            saveUserToFirestore(activeUser).catch(() => {});
-            users.push(activeUser);
-          } else {
+          if (u) {
             users.push(u);
           }
         });

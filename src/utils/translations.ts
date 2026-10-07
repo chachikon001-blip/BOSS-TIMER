@@ -58,10 +58,9 @@ export const translations = {
     settingsSubtitle: 'การตั้งค่าเสียงและภาษาจะถูกบันทึกเฉพาะในเครื่องของคุณ (สิ่งที่ซิงค์กันจะมีเพียงเวลาเกิดของบอสเท่านั้น)',
     tabSound: 'เสียง & อ่านออกเสียง',
     tabLanguage: 'ภาษาของระบบ',
-    tabStages: 'เวลาแจ้งเตือนล่วงหน้า',
-    tabServerTags: 'รหัสเซิร์ฟเวอร์',
+    tabDiscord: 'Discord Webhook',
+    tabLine: 'LINE Webhook',
     tabTools: 'เครื่องมือจัดการ',
-    tabWebhooks: 'Discord & LINE',
     saveSettings: 'บันทึกการตั้งค่า',
     cancel: 'ยกเลิก',
     testSoundBtn: 'ทดลองฟังเสียง',
@@ -89,18 +88,26 @@ export const translations = {
     ttsAll: 'อ่านทั้งชื่อไทยและอังกฤษ',
     ttsSpeed: 'ความเร็วเสียงพูด',
 
-    // Notification Stages
-    stagesTitle: 'แจ้งเตือนล่วงหน้าก่อนบอสเกิด (นาที)',
-    stage10: '10 นาทีก่อนเกิด',
-    stage5: '5 นาทีก่อนเกิด',
-    stage3: '3 นาทีก่อนเกิด',
-    stage1: '1 นาทีก่อนเกิด',
-    browserPush: 'การแจ้งเตือนบนหน้าต่างบราวเซอร์ (Desktop Push)',
+    // In-Sound Alert Stages
+    soundStagesTitle: 'เลือกเวลาแจ้งเตือนล่วงหน้าก่อนบอสเกิด (นาที):',
+    soundStage10: '10 นาทีก่อนเกิด',
+    soundStage5: '5 นาทีก่อนเกิด',
+    soundStage3: '3 นาทีก่อนเกิด',
+    soundStage1: '1 นาทีก่อนเกิด',
+
+    // Discord Webhooks (Dual)
+    discordChannel1Title: 'ห้องที่ 1: แจ้งบอส 30 ตัวที่ใกล้ที่สุด',
+    discordChannel1Desc: 'ส่งรายชื่อบอส 30 ตัวที่ใกล้เกิดที่สุด พร้อมเวลา สถานะ และสถานที่ เข้าห้อง Discord',
+    discordChannel2Title: 'ห้องที่ 2: แจ้งเตือนบอสที่กำลังจะเกิด',
+    discordChannel2Desc: 'ส่งข้อความแจ้งเตือนเมื่อบอสใกล้เกิดตามนาทีที่เลือก',
+    discordSpawnStagesTitle: 'เลือกระยะเวลานาทีก่อนเกิดที่จะส่งแจ้งเตือนเข้า Discord:',
+    discordSendTop30Btn: 'ส่งรายชื่อ 30 ตัวเข้า Discord ตอนนี้',
+    adminOnlyNotice: '🔒 การตั้งค่าในส่วนนี้สงวนสิทธิ์สำหรับแอดมินกิลด์เท่านั้น',
 
     // Tools
     googleSheets: 'Google Sheets (ซิงค์ & คัดลอกช่อง A-F)',
     openSheets: 'เปิด Google Sheets',
-    rebootServer: 'รีบูทเซิร์ฟเวอร์ (Server Reboot - ช่อง P)',
+    rebootServer: 'รีบูทเซิร์ฟเวอร์ (Server Reboot)',
     openReboot: 'เปิดรีบูทเซิร์ฟเวอร์',
   },
   en: {
@@ -124,7 +131,7 @@ export const translations = {
     aliveBosses: 'Alive in Map',
     nextBoss: 'Next Boss Spawn',
     totalTracked: 'Total Tracked',
-    unitBoss: '',
+    unitBoss: 'bosses',
     readyToHunt: 'Ready to hunt',
     bothServers: 'Both Servers',
 
@@ -160,10 +167,9 @@ export const translations = {
     settingsSubtitle: 'Your sound, voice, and language settings are strictly private to your device (only boss spawn times are synced with the guild).',
     tabSound: 'Sound & Voice (TTS)',
     tabLanguage: 'App Language',
-    tabStages: 'Alert Intervals',
-    tabServerTags: 'Server Tags',
+    tabDiscord: 'Discord Webhook',
+    tabLine: 'LINE Webhook',
     tabTools: 'Guild Tools',
-    tabWebhooks: 'Discord & LINE',
     saveSettings: 'Save Settings',
     cancel: 'Cancel',
     testSoundBtn: 'Play Test Voice',
@@ -191,18 +197,26 @@ export const translations = {
     ttsAll: 'Both Thai & English',
     ttsSpeed: 'Speech Speed',
 
-    // Notification Stages
-    stagesTitle: 'Advance Spawn Alert Stages (Minutes)',
-    stage10: '10 Mins Before',
-    stage5: '5 Mins Before',
-    stage3: '3 Mins Before',
-    stage1: '1 Min Before',
-    browserPush: 'Desktop Browser Push Notifications',
+    // In-Sound Alert Stages
+    soundStagesTitle: 'Advance Alert Stages (Minutes before spawn):',
+    soundStage10: '10 Mins Before',
+    soundStage5: '5 Mins Before',
+    soundStage3: '3 Mins Before',
+    soundStage1: '1 Min Before',
+
+    // Discord Webhooks (Dual)
+    discordChannel1Title: 'Channel 1: Top 30 Nearest Bosses',
+    discordChannel1Desc: 'Send rich overview of 30 closest bosses with spawn time, status & location to Discord',
+    discordChannel2Title: 'Channel 2: Impending Spawn Alerts',
+    discordChannel2Desc: 'Post automatic alerts when bosses reach chosen threshold minutes before spawn',
+    discordSpawnStagesTitle: 'Select which minutes before spawn will notify this Discord channel:',
+    discordSendTop30Btn: 'Send Top 30 List to Discord Now',
+    adminOnlyNotice: '🔒 This section is restricted to Guild Admins only.',
 
     // Tools
     googleSheets: 'Google Sheets (Sync & Copy Columns A-F)',
     openSheets: 'Open Google Sheets',
-    rebootServer: 'Server Reboot (Calculate from Column P)',
+    rebootServer: 'Server Reboot (Reboot Spawn Calculator)',
     openReboot: 'Open Server Reboot',
   }
 };

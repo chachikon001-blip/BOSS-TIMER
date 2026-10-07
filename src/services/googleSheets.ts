@@ -520,6 +520,30 @@ export function convertSheetRowsToBosses(
       : (existingBossMatch?.bossNumber ?? matchedKnownBoss?.num);
     const pinned = existingBossMatch?.pinned ?? matchedKnownBoss?.pinned ?? (index < 3);
 
+    // Intelligently preserve active spawn time and reboot calculation if sheet has no timestamp or older timestamp
+    let effectiveLastKilled = lastKilledAt;
+    let effectiveNextSpawn = nextSpawnAt;
+    let effectiveKilledBy = lastKilledAt ? 'Google Sheet' : existingBossMatch?.killedBy;
+    let effectiveNotes = existingBossMatch?.notes;
+
+    if (!effectiveNextSpawn && existingBossMatch?.nextSpawnAt) {
+      // Sheet has empty or unknown time, preserve active countdown!
+      effectiveNextSpawn = existingBossMatch.nextSpawnAt;
+      effectiveLastKilled = existingBossMatch.lastKilledAt;
+      effectiveKilledBy = existingBossMatch.killedBy;
+      effectiveNotes = existingBossMatch.notes;
+    } else if (existingBossMatch?.notes?.includes('รีบูท') || existingBossMatch?.killedBy?.includes('รีบูท')) {
+      // If boss was set by server reboot, only overwrite if sheet has newer kill date
+      const existingKillMs = existingBossMatch.lastKilledAt ? new Date(existingBossMatch.lastKilledAt).getTime() : 0;
+      const sheetKillMs = lastKilledAt ? new Date(lastKilledAt).getTime() : 0;
+      if (sheetKillMs <= existingKillMs && existingBossMatch.nextSpawnAt) {
+        effectiveNextSpawn = existingBossMatch.nextSpawnAt;
+        effectiveLastKilled = existingBossMatch.lastKilledAt;
+        effectiveKilledBy = existingBossMatch.killedBy;
+        effectiveNotes = existingBossMatch.notes;
+      }
+    }
+
     const bossObj: Boss = {
       id: bossId,
       name: canonicalName,
@@ -527,8 +551,10 @@ export function convertSheetRowsToBosses(
       serverTag,
       location,
       respawnMinutes,
-      lastKilledAt,
-      nextSpawnAt,
+      lastKilledAt: effectiveLastKilled,
+      nextSpawnAt: effectiveNextSpawn,
+      killedBy: effectiveKilledBy,
+      notes: effectiveNotes,
       notifiedStages: existingBossMatch?.notifiedStages || [],
       dropItems,
       pinned,
@@ -539,9 +565,6 @@ export function convertSheetRowsToBosses(
     }
     if (bossNumber !== undefined && bossNumber !== null) {
       bossObj.bossNumber = bossNumber;
-    }
-    if (lastKilledAt) {
-      bossObj.killedBy = 'Google Sheet';
     }
 
     bossesList.push(bossObj);

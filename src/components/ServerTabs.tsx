@@ -12,6 +12,7 @@ import {
   Check,
   X
 } from 'lucide-react';
+import { translations, AppLanguage } from '../utils/translations';
 
 interface ServerTabsProps {
   currentTab: 'main' | 'sub' | 'all';
@@ -32,6 +33,7 @@ interface ServerTabsProps {
   onUpdateServerTag?: (server: 'main' | 'sub', newTag: string) => void;
   onOpenReboot?: () => void;
   onOpenResetAll?: () => void;
+  appLanguage?: AppLanguage;
 }
 
 export const ServerTabs: React.FC<ServerTabsProps> = ({
@@ -53,7 +55,9 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
   onUpdateServerTag,
   onOpenReboot,
   onOpenResetAll,
+  appLanguage = 'th',
 }) => {
+  const t = translations[appLanguage] || translations.th;
   const [editingServer, setEditingServer] = useState<'main' | 'sub' | null>(null);
   const [tempTag, setTempTag] = useState<string>('');
 
@@ -92,7 +96,7 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
           }`}
         >
           <ShieldAlert className="w-4 h-4 text-blue-300 shrink-0" />
-          <span>เซิร์ฟหลัก</span>
+          <span>{t.mainServer}</span>
 
           {/* Editable Main Tag */}
           {editingServer === 'main' ? (
@@ -156,9 +160,9 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
           }`}
         >
           <Swords className="w-4 h-4 text-purple-300 shrink-0" />
-          <span>เซิร์ฟรอง</span>
+          <span>{t.subServer}</span>
 
-          {/* Editable Sub Tag (e.g. B9, S1) */}
+          {/* Editable Sub Tag */}
           {editingServer === 'sub' ? (
             <div
               className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-amber-400 shadow-lg z-20"
@@ -220,7 +224,7 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
           }`}
         >
           <Layers className="w-4 h-4 text-amber-300 shrink-0" />
-          <span>ตารางรวมทั้ง 2 เซิร์ฟ</span>
+          <span>{t.allServers}</span>
           <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-950/40 text-amber-200 font-mono-num">
             {allCount}
           </span>
@@ -232,10 +236,10 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
         <div className="p-2.5 bg-slate-900/90 border border-amber-500/40 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs animate-fade-in shadow-md">
           <div className="flex items-center gap-2">
             <span className="font-bold text-amber-400">
-              ⚡ เปลี่ยนชื่อ{editingServer === 'main' ? 'เซิร์ฟหลัก' : 'เซิร์ฟรอง'}:
+              ⚡ {appLanguage === 'en' ? 'Rename Server:' : `เปลี่ยนชื่อ${editingServer === 'main' ? 'เซิร์ฟหลัก' : 'เซิร์ฟรอง'}:`}
             </span>
             <span className="text-slate-400">
-              พิมพ์ชื่อเซิร์ฟใหม่ (เช่น B9, T3, S1) หรือคลิกปุ่มลัด:
+              {appLanguage === 'en' ? 'Type new tag or click preset:' : 'พิมพ์ชื่อเซิร์ฟใหม่ (เช่น B9, T3, S1) หรือคลิกปุ่มลัด:'}
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -262,7 +266,7 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="ค้นหาชื่อบอส, สถานที่, หรือไอเทมดรอป..."
+            placeholder={t.searchPlaceholder}
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
@@ -285,10 +289,10 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
               onChange={(e) => onStatusFilterChange(e.target.value as 'all' | 'soon' | 'alive' | 'pending')}
               className="w-full sm:w-auto px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs sm:text-sm text-slate-300 focus:outline-none focus:border-amber-500"
             >
-              <option value="all">สถานะ: ทั้งหมด</option>
-              <option value="soon">🔥 ใกล้เกิด (&lt; 15 นาที)</option>
-              <option value="alive">🟢 เกิดแล้ว (Alive)</option>
-              <option value="pending">⏳ ยังไม่เกิด (Pending)</option>
+              <option value="all">{t.allStatus}</option>
+              <option value="soon">🔥 {t.statusSoon}</option>
+              <option value="alive">🟢 {t.statusAlive}</option>
+              <option value="pending">⏳ {t.statusDead}</option>
             </select>
           </div>
 
@@ -299,9 +303,9 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
               onChange={(e) => onSortByChange(e.target.value as 'next_spawn' | 'name' | 'respawn')}
               className="w-full sm:w-auto px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs sm:text-sm text-slate-300 focus:outline-none focus:border-amber-500"
             >
-              <option value="next_spawn">เรียงตาม: เวลาเกิดเร็วสุด</option>
-              <option value="name">เรียงตาม: ชื่อบอส (ก-ฮ)</option>
-              <option value="respawn">เรียงตาม: ระยะเวลารอบเกิด</option>
+              <option value="next_spawn">{t.sortBySpawn}</option>
+              <option value="name">{t.sortByName}</option>
+              <option value="respawn">{t.sortByRespawnTime}</option>
             </select>
           </div>
 
@@ -309,7 +313,7 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
           <div className="flex items-center p-1 bg-slate-900 border border-slate-800 rounded-lg">
             <button
               onClick={() => onViewModeChange('table')}
-              title="มุมมองตาราง (ตามภาพตัวอย่าง)"
+              title={appLanguage === 'en' ? 'Table View' : 'มุมมองตาราง'}
               className={`p-1.5 rounded transition ${
                 viewMode === 'table'
                   ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
@@ -320,7 +324,7 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
             </button>
             <button
               onClick={() => onViewModeChange('grid')}
-              title="มุมมองการ์ด (Grid Cards)"
+              title={appLanguage === 'en' ? 'Grid Cards View' : 'มุมมองการ์ด (Grid Cards)'}
               className={`p-1.5 rounded transition ${
                 viewMode === 'grid'
                   ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
@@ -330,6 +334,19 @@ export const ServerTabs: React.FC<ServerTabsProps> = ({
               <LayoutGrid className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Quick Reset All Times Button */}
+          {onOpenResetAll && (
+            <button
+              type="button"
+              onClick={onOpenResetAll}
+              className="px-2.5 py-2 rounded-lg bg-rose-950/60 hover:bg-rose-900/90 text-rose-300 text-xs border border-rose-800/50 font-bold transition flex items-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
+              title={appLanguage === 'en' ? 'Reset boss spawn times to --:--' : 'รีเซ็ตเวลาบอสเป็น --:--'}
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden md:inline">{t.resetAll}</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

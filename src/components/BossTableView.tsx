@@ -2,6 +2,7 @@ import React from 'react';
 import { Boss } from '../types/boss';
 import { BossTableRow } from './BossTableRow';
 import { Star, Shield, RotateCcw } from 'lucide-react';
+import { translations, AppLanguage } from '../utils/translations';
 
 interface BossTableViewProps {
   bosses: Boss[];
@@ -11,6 +12,7 @@ interface BossTableViewProps {
   onTestSound?: (boss: Boss) => void;
   onQuickUpdateTime?: (bossId: string, newTimeStr: string | null) => void;
   onOpenResetAll?: () => void;
+  appLanguage?: AppLanguage;
 }
 
 export const BossTableView: React.FC<BossTableViewProps> = ({
@@ -21,16 +23,21 @@ export const BossTableView: React.FC<BossTableViewProps> = ({
   onTestSound,
   onQuickUpdateTime,
   onOpenResetAll,
+  appLanguage = 'th',
 }) => {
+  const t = translations[appLanguage] || translations.th;
+
   if (bosses.length === 0) {
     return (
       <div className="p-12 text-center rounded-2xl bg-slate-900/60 border border-slate-800 my-4">
         <div className="w-12 h-12 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-3">
           <Shield className="w-6 h-6" />
         </div>
-        <h3 className="text-base font-bold text-slate-200">ไม่พบบอสในรายการนี้</h3>
+        <h3 className="text-base font-bold text-slate-200">
+          {appLanguage === 'en' ? 'No bosses found in this list' : 'ไม่พบบอสในรายการนี้'}
+        </h3>
         <p className="text-xs text-slate-400 mt-1">
-          ลองเลือกเซิร์ฟเวอร์อื่น หรือพิมพ์ค้นหาใหม่อีกครั้ง
+          {appLanguage === 'en' ? 'Try selecting another server tab or clear your search query' : 'ลองเลือกเซิร์ฟเวอร์อื่น หรือพิมพ์ค้นหาใหม่อีกครั้ง'}
         </p>
       </div>
     );
@@ -47,30 +54,29 @@ export const BossTableView: React.FC<BossTableViewProps> = ({
                 <Star className="w-4 h-4 text-amber-400 fill-amber-400 mx-auto" />
               </th>
               <th className="py-3.5 px-2 sm:px-4">
-                ชื่อบอส / เซิร์ฟเวอร์
+                {t.bossNameCol}
               </th>
               <th className="py-3.5 px-2 sm:px-4 text-center">
                 <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                  <span>เวลาเกิด GMT+7</span>
-                  <span className="text-[10px] text-slate-500 font-normal">(แก้ไขได้)</span>
+                  <span>{t.spawnTimeCol}</span>
                   {onOpenResetAll && (
                     <button
                       type="button"
                       onClick={onOpenResetAll}
                       className="ml-1 px-1.5 py-0.5 rounded bg-rose-950/60 hover:bg-rose-900/90 text-rose-300 text-[10px] border border-rose-800/50 font-bold transition flex items-center gap-1 shadow-sm active:scale-95"
-                      title="รีเซ็ตเวลาบอสทั้งหมดเป็น --:--"
+                      title={appLanguage === 'en' ? 'Reset all boss timers to --:--' : 'รีเซ็ตเวลาบอสทั้งหมดเป็น --:--'}
                     >
                       <RotateCcw className="w-2.5 h-2.5 text-rose-400" />
-                      <span>รีเซ็ตทั้งหมด</span>
+                      <span>{t.resetAll}</span>
                     </button>
                   )}
                 </div>
               </th>
               <th className="py-3.5 px-2 sm:px-4">
-                อัปเดตเวลา <span className="text-[10px] text-slate-500 font-normal">(เวลาล่าสุด + รอบเกิด)</span>
+                {t.updateTimeCol}
               </th>
               <th className="py-3.5 px-2 sm:px-4 text-center w-24">
-                เครื่องมือ
+                {t.actionsCol}
               </th>
             </tr>
           </thead>
@@ -86,6 +92,7 @@ export const BossTableView: React.FC<BossTableViewProps> = ({
                 onTogglePin={onTogglePin}
                 onTestSound={onTestSound}
                 onQuickUpdateTime={onQuickUpdateTime}
+                appLanguage={appLanguage}
               />
             ))}
           </tbody>
