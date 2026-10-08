@@ -40,7 +40,7 @@ export const ResetAllTimesModal: React.FC<ResetAllTimesModalProps> = ({
   const [targetServer, setTargetServer] = useState<ServerType | 'all'>(
     currentServer === 'sub' ? 'sub' : currentServer === 'main' ? 'main' : 'sub'
   );
-  const [syncToSheet, setSyncToSheet] = useState<boolean>(true);
+  const [syncToSheet, setSyncToSheet] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -88,21 +88,6 @@ export const ResetAllTimesModal: React.FC<ResetAllTimesModalProps> = ({
         });
       } catch (apiErr) {
         console.warn('API reset-times notice:', apiErr);
-      }
-
-      // 3. Sync to Google Sheets if requested
-      if (syncToSheet && sheetConfig?.sheetId) {
-        try {
-          const token = await getAccessToken();
-          if (token) {
-            const bossesToWrite = targetServer === 'all'
-              ? updatedBosses
-              : updatedBosses.filter((b) => b.server === targetServer);
-            await writeBossesToGoogleSheet(sheetConfig.sheetId, bossesToWrite);
-          }
-        } catch (sheetErr) {
-          console.warn('Sheet sync on reset error:', sheetErr);
-        }
       }
 
       onResetComplete(updatedBosses);
@@ -214,30 +199,6 @@ export const ResetAllTimesModal: React.FC<ResetAllTimesModalProps> = ({
                 สมาชิกจะสามารถกดปุ่ม "อัปเดต" หรือกดแก้เวลาบอสเพื่อเริ่มนับรอบเกิดใหม่ได้ทุกเมื่อ
               </p>
             </div>
-          </div>
-
-          {/* Sync to Sheet Option */}
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <TableProperties className="w-4 h-4 text-emerald-400" />
-              <div>
-                <div className="text-xs font-bold text-slate-200">
-                  อัปเดตลง Google Sheets ทันที
-                </div>
-                <div className="text-[11px] text-slate-500">
-                  ล้างเวลาในตารางชีตให้เป็น "ไม่ทราบเวลา" ตรงกัน
-                </div>
-              </div>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={syncToSheet}
-                onChange={(e) => setSyncToSheet(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rose-500"></div>
-            </label>
           </div>
         </div>
 

@@ -22,6 +22,8 @@ interface Boss {
   dropItems?: string[];
   pinned?: boolean;
   bossNumber?: number;
+  spawnChance?: number;
+  spawnColor?: string;
 }
 
 interface NotificationSettings {
@@ -74,7 +76,7 @@ const DEFAULT_SHEET_CONFIG: SheetConfig = {
   gid: '1587945636',
   mainGid: '1587945636',
   subGid: '82332950',
-  autoSync: true,
+  autoSync: false,
   syncIntervalSeconds: 60,
   lastSyncedAt: null,
 };
@@ -336,75 +338,266 @@ async function sendDiscordNotification(boss: Boss, stage: number) {
   }
 }
 
+// Preset boss color and spawn chance configuration
+const PRESET_BOSS_COLOR_CONFIG: Record<string, { spawnChance: number; spawnColor: string }> = {
+  // 50% (Yellow)
+  'เฟลิส': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'felis': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'เทมเพสต์': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'valefar': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'เอนคูรา': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'enkura': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'บัลโบ': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'balbo': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'เคลซอส': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'kelsus': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'พันนาโรด': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'pannarod': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'แกเร็ธ': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'gahareth': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'เชอร์ทูบา': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'chertuba': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'ฮิชิโลเม': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'hisilrome': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'ทรอมบา': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'tromba': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'บาซิลา': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'basila': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'ทัลคิน': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'talkin': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'เรปิโร': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'repiro': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'มาทูรา': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'matura': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'เบรก้า': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'breka': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'ฟลินท์': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'flynt': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'เซลลู': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'selu': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'คาบริโอ': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'cabrio': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'ฮาร์ป': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'haff': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'แอนดราส': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'andras': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'ทานาทอส': { spawnChance: 50, spawnColor: '#fff2cc' },
+  'tanatos': { spawnChance: 50, spawnColor: '#fff2cc' },
+
+  // 100% (Green)
+  'ซาบัน': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'savan': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'ครูม่าหนองน้ำ': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'mutated cruma': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'เบฮีมอธ': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'behemoth': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'ทิมิเนล': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'timiniel': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'ครูม่าปนเปื้อน': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'cruma4': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'กลาคิ': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'glaki': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'คาทาน': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'katan': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'ทิมิทริส': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'timitris': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'โครูน': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'coroon': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'ทาลาคิน': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'talakin': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'เมดูซ่า': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'medusa': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'พัน ดรายด์': { spawnChance: 100, spawnColor: '#d9ead3' },
+  "pan'dra'eed": { spawnChance: 100, spawnColor: '#d9ead3' },
+  'สตัน': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'stonegeist': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'ชาร์ก้า': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'sarka': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'ลิลลี่': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'lily': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'กระจก': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'mirror': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'แลนเดอร์': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'landor': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'ซามูเอล': { spawnChance: 100, spawnColor: '#d9ead3' },
+  'samuel': { spawnChance: 100, spawnColor: '#d9ead3' },
+
+  // 33% (Red)
+  'คอร์ซัสเซปเตอร์': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'core': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'มด 3': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'ant3': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'ดราก้อนบีสต์': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'db': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'ออร์เฟน': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'orfen': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'โอลด์คุส': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'olkuth': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'ลาฮา': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'rahha': { spawnChance: 33, spawnColor: '#f4cccc' },
+};
+
+function getBossSpawnInfo(b: Boss) {
+  let chance = b.spawnChance;
+  let color = b.spawnColor;
+  if (chance === undefined || !color) {
+    const nameLower = (b.name || '').toLowerCase();
+    for (const [key, conf] of Object.entries(PRESET_BOSS_COLOR_CONFIG)) {
+      if (nameLower.includes(key.toLowerCase())) {
+        if (chance === undefined) chance = conf.spawnChance;
+        if (!color) color = conf.spawnColor;
+        break;
+      }
+    }
+  }
+  const finalChance = chance !== undefined ? chance : 100;
+  let emoji = '🟢';
+  if (finalChance <= 35 || color === '#f4cccc') {
+    emoji = '🔴';
+  } else if (finalChance <= 65 || color === '#fff2cc') {
+    emoji = '🟡';
+  } else {
+    emoji = '🟢';
+  }
+  return {
+    chance: finalChance,
+    emoji,
+    badge: `${emoji}โอกาศเกิก${finalChance}%`,
+  };
+}
+
+// Track last dispatched message ID so we can PATCH/edit the existing message
+// This keeps the Discord channel always updated with the 30 closest bosses in place without flooding!
+let lastTop30MessageId: string | null = null;
+let lastTop30WebhookUrl: string | null = null;
+let top30DebounceTimer: NodeJS.Timeout | null = null;
+
 // Discord Webhook Dispatcher (Room 1: Top 30 Nearest Bosses)
-async function dispatchDiscordTop30(webhookUrl: string) {
+// Follows user requirement 4:
+// 1) Filter out bosses whose spawn time has already passed ("ตัวที่เกินเวลาเเล้วไม่ต้องขึ้นไห้ข้าม")
+// 2) Look at closest upcoming spawn first ("เเละดูตัวที่ไกล้ถึงที่สุดมาก่อน")
+// 3) Keep 30 closest bosses always updated without having to resend ("ไห้ขึ้น30ตัวที่ไกล้ที่สุดไว้ตลอดโดยไม่ต้องกดส่งใหม่")
+// 4) Exact format: "มด 3- Ant3  • 10:51 • 🔴โอกาศเกิก33%  [B2]"
+async function dispatchDiscordTop30(webhookUrl: string): Promise<boolean> {
   if (!webhookUrl) return false;
 
   const now = Date.now();
-  // Sort bosses: Alive first, then closest upcoming spawn, then without spawn time
-  const sorted = [...state.bosses].sort((a, b) => {
-    const timeA = a.nextSpawnAt ? new Date(a.nextSpawnAt).getTime() : Infinity;
-    const timeB = b.nextSpawnAt ? new Date(b.nextSpawnAt).getTime() : Infinity;
-    const diffA = timeA - now;
-    const diffB = timeB - now;
-
-    const isAliveA = diffA <= 0 && a.nextSpawnAt !== null;
-    const isAliveB = diffB <= 0 && b.nextSpawnAt !== null;
-
-    if (isAliveA && !isAliveB) return -1;
-    if (!isAliveA && isAliveB) return 1;
-
-    return timeA - timeB;
+  // Filter ONLY bosses with future spawn times (> now)
+  // Skip any boss whose spawn time has already passed or is null
+  const upcomingBosses = state.bosses.filter((b) => {
+    if (!b.nextSpawnAt) return false;
+    const ms = new Date(b.nextSpawnAt).getTime();
+    return !isNaN(ms) && ms > now;
   });
 
-  const top30 = sorted.slice(0, 30);
-  const nowBkk = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-
-  const lines = top30.map((b, idx) => {
-    const tag = b.serverTag || (b.server === 'main' ? (state.settings.mainServerTag || 'T3') : (state.settings.subServerTag || 'S1'));
-    if (!b.nextSpawnAt) {
-      return `\`${String(idx + 1).padStart(2, '0')}.\` ⏳ **${b.name}** [${tag}] • \`--:--\` • ${b.location || '-'}`;
-    }
-    const spawnMs = new Date(b.nextSpawnAt).getTime();
-    const diffSec = Math.floor((spawnMs - now) / 1000);
-    const spawnClock = new Date(b.nextSpawnAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-
-    if (diffSec <= 0) {
-      return `\`${String(idx + 1).padStart(2, '0')}.\` 🟢 **${b.name}** [${tag}] • **เกิดแล้ว!** (${spawnClock}) • ${b.location || '-'}`;
-    } else if (diffSec <= 900) {
-      const mins = Math.ceil(diffSec / 60);
-      return `\`${String(idx + 1).padStart(2, '0')}.\` 🟡 **${b.name}** [${tag}] • **ในอีก ${mins} นาที** (${spawnClock}) • ${b.location || '-'}`;
-    } else {
-      const h = Math.floor(diffSec / 3600);
-      const m = Math.floor((diffSec % 3600) / 60);
-      const timeStr = h > 0 ? `${h}ชม. ${m}น.` : `${m}น.`;
-      return `\`${String(idx + 1).padStart(2, '0')}.\` ⏳ **${b.name}** [${tag}] • **${spawnClock}** (อีก ${timeStr}) • ${b.location || '-'}`;
-    }
+  // Sort ascending: closest upcoming spawn first
+  upcomingBosses.sort((a, b) => {
+    return new Date(a.nextSpawnAt!).getTime() - new Date(b.nextSpawnAt!).getTime();
   });
 
-  const embed = {
-    title: `⚔️ [รายงานบอส 30 ตัวที่ใกล้ที่สุด] • ${nowBkk} GMT+7`,
-    description: lines.join('\n'),
-    color: 0x3b82f6,
-    footer: { text: `Boss Timer Pro • สมาชิกติดตาม ${state.bosses.length} ตัว` },
-    timestamp: new Date().toISOString(),
+  const top30 = upcomingBosses.slice(0, 30);
+  const nowBkk = new Date().toLocaleTimeString('th-TH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Bangkok',
+  });
+
+  let lines: string[] = [];
+  if (top30.length === 0) {
+    lines = ['*(ขณะนี้ยังไม่มีบอสที่รอเวลาเกิด หรือบอสทั้งหมดเลยเวลาแล้ว กรุณาอัปเดตเวลารอบใหม่)*'];
+  } else {
+    lines = top30.map((b) => {
+      const tag = b.serverTag || (b.server === 'main' ? (state.settings.mainServerTag || 'B1') : (state.settings.subServerTag || 'B2'));
+      const spawnDate = new Date(b.nextSpawnAt!);
+      const spawnClock = spawnDate.toLocaleTimeString('th-TH', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Bangkok',
+      });
+      const { badge } = getBossSpawnInfo(b);
+      // Format requested: มด 3- Ant3  • 10:51 • 🔴โอกาศเกิก33%  [B2]
+      return `${b.name}  • ${spawnClock} • ${badge}  [${tag}]`;
+    });
+  }
+
+  const payload = {
+    content: `📋 **[ห้องส่งบอส 30 ตัวที่ใกล้ที่สุด]** • อัปเดตสดอัตโนมัติ: ${nowBkk} น.`,
+    embeds: [
+      {
+        title: `⚔️ รายงานบอส ${top30.length} ตัวที่ใกล้ถึงเวลาเกิดที่สุด (Auto-Live)`,
+        description: lines.join('\n'),
+        color: 0xef4444,
+        footer: { text: `ห้องส่ง 30 ตัวอัตโนมัติ • อัปเดตล่าสุด ${nowBkk} น. (ข้ามตัวที่เกินเวลาแล้ว)` },
+        timestamp: new Date().toISOString(),
+      },
+    ],
   };
 
+  // If we have a previous message ID on this webhook, edit it in place
+  if (lastTop30MessageId && lastTop30WebhookUrl === webhookUrl) {
+    try {
+      const match = webhookUrl.match(/https:\/\/(?:ptb\.|canary\.)?discord\.com\/api\/webhooks\/(\d+)\/([^/?]+)/);
+      if (match) {
+        const [, whId, whToken] = match;
+        const patchUrl = `https://discord.com/api/webhooks/${whId}/${whToken}/messages/${lastTop30MessageId}`;
+        const patchRes = await fetch(patchUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (patchRes.ok) {
+          return true;
+        }
+      }
+    } catch {
+      // Fall through to sending a new message if edit fails
+    }
+  }
+
+  // Send new message with ?wait=true to capture ID
   try {
-    const res = await fetch(webhookUrl, {
+    const postUrl = webhookUrl.includes('?') ? `${webhookUrl}&wait=true` : `${webhookUrl}?wait=true`;
+    const res = await fetch(postUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: `📋 **[รายชื่อบอส 30 ตัวที่ใกล้เกิดที่สุด]** อัปเดตเวลา ${nowBkk}`,
-        embeds: [embed],
-      }),
+      body: JSON.stringify(payload),
     });
-    return res.ok;
+    if (res.ok) {
+      try {
+        const json = (await res.json()) as { id?: string };
+        if (json && json.id) {
+          lastTop30MessageId = json.id;
+          lastTop30WebhookUrl = webhookUrl;
+        }
+      } catch {}
+      return true;
+    }
+    return false;
   } catch (err) {
     console.error('Failed to dispatch Discord Top 30:', err);
     return false;
   }
 }
+
+// Debounced auto-trigger for Top 30 whenever any boss data updates
+function triggerDiscordTop30AutoDispatch() {
+  const url = state.settings.discordTop30WebhookUrl || state.settings.discordWebhookUrl;
+  if (!state.settings.discordTop30Enabled || !url) return;
+  if (top30DebounceTimer) clearTimeout(top30DebounceTimer);
+  top30DebounceTimer = setTimeout(() => {
+    dispatchDiscordTop30(url).catch(() => {});
+  }, 1500);
+}
+
+// Continuous background ticker: Every 60 seconds, auto-refresh Top 30 so expired bosses drop out
+setInterval(() => {
+  const url = state.settings.discordTop30WebhookUrl || state.settings.discordWebhookUrl;
+  if (state.settings.discordTop30Enabled && url) {
+    dispatchDiscordTop30(url).catch(() => {});
+  }
+}, 60000);
 
 // LINE Webhook / Notification Dispatcher
 async function sendLineNotification(boss: Boss, stage: number) {
@@ -549,6 +742,7 @@ app.post('/api/bosses/kill', (req: Request, res: Response) => {
   persistState();
   broadcastSSE('state_update', state);
   broadcastSSE('boss_killed', { boss, killedBy: boss.killedBy });
+  triggerDiscordTop30AutoDispatch();
 
   res.json({ success: true, boss });
 });
@@ -569,6 +763,7 @@ app.post('/api/bosses/update', (req: Request, res: Response) => {
 
   persistState();
   broadcastSSE('state_update', state);
+  triggerDiscordTop30AutoDispatch();
   res.json({ success: true, boss: state.bosses[index] });
 });
 
@@ -612,6 +807,7 @@ app.delete('/api/bosses/:id', (req: Request, res: Response) => {
 
   persistState();
   broadcastSSE('state_update', state);
+  triggerDiscordTop30AutoDispatch();
   res.json({ success: true });
 });
 
@@ -638,6 +834,7 @@ app.post('/api/bosses/sync-batch', (req: Request, res: Response) => {
 
   persistState();
   broadcastSSE('state_update', state);
+  triggerDiscordTop30AutoDispatch();
   res.json({ success: true, count: state.bosses.length });
 });
 
@@ -667,6 +864,7 @@ app.post('/api/bosses/reset-times', (req: Request, res: Response) => {
 
   persistState();
   broadcastSSE('state_update', state);
+  triggerDiscordTop30AutoDispatch();
 
   const serverLabel = server === 'all' ? 'ทั้งหมด' : server === 'main' ? (state.settings.mainServerTag || 'T3') : (state.settings.subServerTag || 'S1');
 
@@ -779,6 +977,8 @@ app.post('/api/server/reboot', (req: Request, res: Response) => {
     sendLineRebootNotification(state.settings.lineWebhookUrl, serverLabel, rebootDateFormatted, rebootTimeFormatted, rebootedBy);
   }
 
+  triggerDiscordTop30AutoDispatch();
+
   res.json({ success: true, count: state.bosses.length, bosses: state.bosses });
 });
 
@@ -787,7 +987,50 @@ app.post('/api/settings', (req: Request, res: Response) => {
   state.settings = { ...state.settings, ...req.body };
   persistState();
   broadcastSSE('settings_update', state.settings);
+  if (req.body.discordTop30Enabled !== undefined || req.body.discordTop30WebhookUrl !== undefined) {
+    triggerDiscordTop30AutoDispatch();
+  }
   res.json({ success: true, settings: state.settings });
+});
+
+// Get Live Top 30 Nearest Upcoming Bosses (Preview endpoint matching user requirement 4)
+app.get('/api/bosses/top30', (_req: Request, res: Response) => {
+  const now = Date.now();
+  const upcomingBosses = state.bosses.filter((b) => {
+    if (!b.nextSpawnAt) return false;
+    const ms = new Date(b.nextSpawnAt).getTime();
+    return !isNaN(ms) && ms > now;
+  });
+
+  upcomingBosses.sort((a, b) => new Date(a.nextSpawnAt!).getTime() - new Date(b.nextSpawnAt!).getTime());
+  const top30 = upcomingBosses.slice(0, 30);
+  const nowBkk = new Date().toLocaleTimeString('th-TH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Bangkok',
+  });
+
+  const lines = top30.map((b) => {
+    const tag = b.serverTag || (b.server === 'main' ? (state.settings.mainServerTag || 'B1') : (state.settings.subServerTag || 'B2'));
+    const spawnDate = new Date(b.nextSpawnAt!);
+    const spawnClock = spawnDate.toLocaleTimeString('th-TH', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Bangkok',
+    });
+    const { badge } = getBossSpawnInfo(b);
+    return `${b.name}  • ${spawnClock} • ${badge}  [${tag}]`;
+  });
+
+  res.json({
+    success: true,
+    count: top30.length,
+    bosses: top30,
+    lines,
+    updatedAt: nowBkk,
+  });
 });
 
 // Update Server Tag (e.g. Main -> T3, Sub -> B9) and propagate to all bosses
@@ -1214,76 +1457,12 @@ app.post('/api/sheets/sync', async (req: Request, res: Response) => {
   }
 });
 
-// Automatic background sync from Google Sheets every 30 seconds to keep all devices linked
+// Automatic background sync from Google Sheets is completely disabled as requested by user
 async function performAutoGoogleSheetSync() {
-  if (!state.sheetConfig?.autoSync || !state.sheetConfig?.sheetId) return;
-
-  try {
-    const updatedBosses: Boss[] = [];
-    const { sheetId, mainGid, subGid } = state.sheetConfig;
-
-    if (mainGid) {
-      const resMain = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${mainGid}`);
-      if (resMain.ok) {
-        const text = await resMain.text();
-        const mainList = parseSheetCSVToBosses(text, 'main');
-        updatedBosses.push(...mainList);
-      }
-    }
-
-    if (subGid) {
-      const resSub = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${subGid}`);
-      if (resSub.ok) {
-        const text = await resSub.text();
-        const subList = parseSheetCSVToBosses(text, 'sub');
-        updatedBosses.push(...subList);
-      }
-    }
-
-    if (updatedBosses.length > 0) {
-      let hasChanges = false;
-      for (const updated of updatedBosses) {
-        const existing = state.bosses.find(b => b.id === updated.id || (b.name === updated.name && b.server === updated.server));
-        if (existing) {
-          // CRITICAL: If sheet does NOT have a valid spawn time (i.e. updated.nextSpawnAt is null),
-          // DO NOT wipe out existing.nextSpawnAt if existing already has an active timer or reboot timer!
-          if (!updated.nextSpawnAt && existing.nextSpawnAt) {
-            continue;
-          }
-
-          // CRITICAL: If existing was set by server reboot, protect it from being overwritten by older sheet data!
-          const isRebooted = (existing.notes && existing.notes.includes('รีบูท')) || (existing.killedBy && existing.killedBy.includes('รีบูท'));
-          if (isRebooted) {
-            if (!updated.lastKilledAt || !updated.nextSpawnAt) {
-              continue;
-            }
-            const existingKilledTime = existing.lastKilledAt ? new Date(existing.lastKilledAt).getTime() : 0;
-            const updatedKilledTime = new Date(updated.lastKilledAt).getTime();
-            if (updatedKilledTime <= existingKilledTime) {
-              continue;
-            }
-          }
-
-          if (existing.nextSpawnAt !== updated.nextSpawnAt || existing.lastKilledAt !== updated.lastKilledAt) {
-            existing.nextSpawnAt = updated.nextSpawnAt;
-            existing.lastKilledAt = updated.lastKilledAt;
-            existing.bossNumber = updated.bossNumber ?? existing.bossNumber;
-            hasChanges = true;
-          }
-        }
-      }
-
-      if (hasChanges) {
-        state.sheetConfig.lastSyncedAt = new Date().toISOString();
-        persistState();
-        broadcastSSE('state_update', state);
-      }
-    }
-  } catch (err) {
-    // Background sync error - silently ignore
-  }
+  return; // Completely cancelled
 }
-setInterval(performAutoGoogleSheetSync, 30000);
+// Automatic background sync from Google Sheets is completely disabled as requested
+// setInterval(performAutoGoogleSheetSync, 30000);
 
 // User Management & Auth
 app.post('/api/users/login', (req: Request, res: Response) => {
@@ -1294,16 +1473,25 @@ app.post('/api/users/login', (req: Request, res: Response) => {
     return res.status(401).json({ error: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' });
   }
 
-  // Master Admin is always active
-  const isMasterAdmin = user.id === 'admin-master' || user.username.toLowerCase() === 'admin';
+  // Master Admin or any admin username/role is always active with full admin rights
+  const isAdminUser = 
+    user.id === 'admin-master' || 
+    user.role === 'admin' ||
+    user.username.toLowerCase() === 'admin' ||
+    user.username.toLowerCase().includes('admin');
 
-  // Check pending or inactive approval status
-  if (!isMasterAdmin && (user.status === 'pending' || !user.active)) {
-    return res.status(403).json({ error: 'บัญชีนี้อยู่ระหว่างรอแอดมินอนุมัติ กรุณาติดต่อแอดมินเพื่อเปิดใช้งาน' });
-  }
-
-  if (!isMasterAdmin && user.status === 'rejected') {
-    return res.status(403).json({ error: 'บัญชีนี้ถูกปฏิเสธการเข้าใช้งานโดยแอดมิน' });
+  if (isAdminUser) {
+    user.role = 'admin';
+    user.active = true;
+    user.status = 'active';
+  } else {
+    // Check pending or inactive approval status
+    if (user.status === 'pending' || !user.active) {
+      return res.status(403).json({ error: 'บัญชีนี้อยู่ระหว่างรอแอดมินอนุมัติ กรุณาติดต่อแอดมินเพื่อเปิดใช้งาน' });
+    }
+    if (user.status === 'rejected') {
+      return res.status(403).json({ error: 'บัญชีนี้ถูกปฏิเสธการเข้าใช้งานโดยแอดมิน' });
+    }
   }
 
   if (user.passwordHash && user.passwordHash !== password) {
@@ -1330,14 +1518,17 @@ app.post('/api/users/create', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'ชื่อผู้ใช้นี้มีในระบบแล้ว' });
   }
 
-  const isMasterAdmin = cleanUsername.toLowerCase() === 'admin';
-  const shouldActivate = createdByAdmin || isMasterAdmin;
+  const isAdminUser = 
+    cleanUsername.toLowerCase() === 'admin' || 
+    cleanUsername.toLowerCase().includes('admin') || 
+    role === 'admin';
+  const shouldActivate = createdByAdmin || isAdminUser;
 
   const newUser: UserAccount = {
     id: `user-${Date.now()}`,
     username: cleanUsername,
     displayName: String(displayName).trim(),
-    role: role === 'admin' ? 'admin' : 'member',
+    role: isAdminUser ? 'admin' : 'member',
     passwordHash: password || '123456',
     createdAt: new Date().toISOString(),
     active: shouldActivate ? true : false,

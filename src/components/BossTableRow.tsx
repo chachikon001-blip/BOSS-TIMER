@@ -24,6 +24,8 @@ interface BossTableRowProps {
   onTogglePin: (bossId: string) => void;
   onTestSound?: (boss: Boss) => void;
   onQuickUpdateTime?: (bossId: string, newTimeStr: string | null) => void;
+  onUndoBoss?: (bossId: string) => void;
+  canUndoBoss?: (bossId: string) => boolean;
   appLanguage?: AppLanguage;
 }
 
@@ -34,6 +36,8 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
   onTogglePin,
   onTestSound,
   onQuickUpdateTime,
+  onUndoBoss,
+  canUndoBoss,
   appLanguage = 'th',
 }) => {
   const timeInfo = formatRemainingTime(boss.nextSpawnAt);
@@ -259,12 +263,12 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
                   });
                   setIsEditingTime(true);
                 }}
-                title="คลิกเพื่อแก้ไขเวลาเกิด"
+                title={appLanguage === 'en' ? 'Click to edit spawn time' : 'คลิกเพื่อแก้ไขเวลาเกิด'}
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-950/90 border border-slate-700/80 hover:border-amber-500 text-slate-100 hover:text-amber-300 text-xs sm:text-sm font-bold font-mono transition group/time"
               >
                 <span>{formattedSpawnTime}</span>
                 <Clock className="w-3.5 h-3.5 text-slate-400 group-hover/time:text-amber-400" />
-                <span className="text-slate-400 text-xs font-normal">น.</span>
+                {appLanguage !== 'en' && <span className="text-slate-400 text-xs font-normal">น.</span>}
               </button>
 
               {/* Quick Reset Button right next to time when boss has a time set */}
@@ -278,7 +282,7 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
                     }
                   }}
                   className="opacity-40 group-hover/btn:opacity-100 p-1 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 rounded transition border border-transparent hover:border-rose-800/40"
-                  title="รีเซ็ตเวลากลับเป็น --:--"
+                  title={appLanguage === 'en' ? 'Reset timer to --:--' : 'รีเซ็ตเวลากลับเป็น --:--'}
                 >
                   <RotateCcw className="w-3 h-3" />
                 </button>
@@ -314,6 +318,19 @@ export const BossTableRow: React.FC<BossTableRowProps> = ({
           >
             <Clock className="w-3.5 h-3.5" />
           </button>
+
+          {/* Dedicated Undo Button if boss was recently edited */}
+          {canUndoBoss && canUndoBoss(boss.id) && onUndoBoss && (
+            <button
+              type="button"
+              onClick={() => onUndoBoss(boss.id)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 text-xs font-bold transition shadow-xs active:scale-95 animate-pulse"
+              title={appLanguage === 'en' ? 'Undo last change for this boss' : '↩️ ย้อนกลับการแก้ไขล่าสุดของบอสตัวนี้'}
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[11px] font-bold">{appLanguage === 'en' ? 'Undo' : 'ย้อนกลับ'}</span>
+            </button>
+          )}
         </div>
       </td>
 

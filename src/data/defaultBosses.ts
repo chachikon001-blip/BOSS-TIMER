@@ -5,7 +5,7 @@ export const DEFAULT_SHEET_CONFIG: SheetConfig = {
   gid: '1587945636',
   mainGid: '1587945636',
   subGid: '82332950',
-  autoSync: true,
+  autoSync: false,
   syncIntervalSeconds: 60,
   lastSyncedAt: null,
 };

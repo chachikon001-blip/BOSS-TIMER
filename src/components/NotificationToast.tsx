@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Flame, X, Skull } from 'lucide-react';
+import { Flame, X, Skull, RotateCcw } from 'lucide-react';
 
 export interface AlertNotification {
   id: string;
-  type: 'boss_alert' | 'boss_killed' | 'success';
+  type: 'boss_alert' | 'boss_killed' | 'success' | 'undo_info';
   title: string;
   message: string;
   server?: 'main' | 'sub';
   timestamp: number;
+  onUndo?: () => void;
+  undoLabel?: string;
 }
 
 interface NotificationToastProps {
@@ -33,9 +35,10 @@ const ToastItem: React.FC<ToastItemProps> = ({ item, onDismiss }) => {
   };
 
   useEffect(() => {
-    // คำนวณเวลาที่เหลือจาก timestamp เดิม เพื่อความแม่นยำ 5 วินาที
+    // คำนวณเวลาที่เหลือจาก timestamp เดิม เพื่อความแม่นยำ (ถ้ามี onUndo ให้คงอยู่ 7 วินาทีเพื่อให้ผู้ใช้กดทัน)
+    const timeoutDuration = item.onUndo ? 7000 : 5000;
     const elapsed = Date.now() - (item.timestamp || Date.now());
-    const remaining = Math.max(0, 5000 - elapsed);
+    const remaining = Math.max(0, timeoutDuration - elapsed);
 
     const timer = setTimeout(() => {
       triggerClose();
@@ -47,7 +50,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ item, onDismiss }) => {
 
   return (
     <div
-      className={`pointer-events-auto relative overflow-hidden p-2 rounded-lg shadow-xl border flex items-center gap-2 backdrop-blur-md transition-all duration-300 ${
+      className={`pointer-events-auto relative overflow-hidden p-2.5 rounded-xl shadow-2xl border flex items-center gap-2 backdrop-blur-md transition-all duration-300 ${
         isClosing ? 'opacity-0 translate-x-8 scale-95' : 'opacity-100 translate-x-0 scale-100 animate-slide-up'
       } ${
         item.type === 'boss_alert'
@@ -57,30 +60,45 @@ const ToastItem: React.FC<ToastItemProps> = ({ item, onDismiss }) => {
           : 'bg-slate-900/95 border-emerald-500/60 text-emerald-100 shadow-emerald-500/10'
       }`}
     >
-      <div className="p-1 rounded-md bg-slate-950/70 shrink-0">
+      <div className="p-1.5 rounded-lg bg-slate-950/70 shrink-0">
         {item.type === 'boss_alert' ? (
-          <Flame className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
+          <Flame className="w-4 h-4 text-amber-400 animate-bounce" />
         ) : item.type === 'boss_killed' ? (
-          <Skull className="w-3.5 h-3.5 text-red-400" />
+          <Skull className="w-4 h-4 text-red-400" />
         ) : (
-          <Flame className="w-3.5 h-3.5 text-emerald-400" />
+          <Flame className="w-4 h-4 text-emerald-400" />
         )}
       </div>
 
       <div className="flex-1 min-w-0 pr-0.5">
-        <h4 className="text-[11px] font-bold leading-tight truncate">{item.title}</h4>
-        <p className="text-[9.5px] text-slate-300 mt-0.5 leading-tight truncate">{item.message}</p>
+        <h4 className="text-xs font-bold leading-tight truncate">{item.title}</h4>
+        <p className="text-[10px] text-slate-300 mt-0.5 leading-tight truncate">{item.message}</p>
       </div>
+
+      {item.onUndo && (
+        <button
+          type="button"
+          onClick={() => {
+            item.onUndo!();
+            triggerClose();
+          }}
+          className="px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] flex items-center gap-1 shadow-md active:scale-95 shrink-0 transition"
+          title="ย้อนกลับการแก้ไขล่าสุด"
+        >
+          <RotateCcw className="w-3 h-3" />
+          <span>{item.undoLabel || 'ย้อนกลับ'}</span>
+        </button>
+      )}
 
       <button
         onClick={triggerClose}
-        className="p-0.5 text-slate-400 hover:text-white rounded transition hover:bg-white/10 shrink-0"
+        className="p-1 text-slate-400 hover:text-white rounded-lg transition hover:bg-white/10 shrink-0"
         title="ปิดการแจ้งเตือน"
       >
-        <X className="w-3 h-3" />
+        <X className="w-3.5 h-3.5" />
       </button>
 
-      {/* Progress bar counting down 5 seconds */}
+      {/* Progress bar */}
       <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black/40 overflow-hidden">
         <div
           className={`h-full ${
@@ -91,7 +109,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ item, onDismiss }) => {
               : 'bg-emerald-400'
           }`}
           style={{
-            animation: 'toastCountdown 5s linear forwards',
+            animation: `toastCountdown ${item.onUndo ? '7s' : '5s'} linear forwards`,
           }}
         />
       </div>

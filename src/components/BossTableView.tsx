@@ -12,6 +12,8 @@ interface BossTableViewProps {
   onTestSound?: (boss: Boss) => void;
   onQuickUpdateTime?: (bossId: string, newTimeStr: string | null) => void;
   onOpenResetAll?: () => void;
+  onUndoBoss?: (bossId: string) => void;
+  canUndoBoss?: (bossId: string) => boolean;
   appLanguage?: AppLanguage;
 }
 
@@ -23,6 +25,8 @@ export const BossTableView: React.FC<BossTableViewProps> = ({
   onTestSound,
   onQuickUpdateTime,
   onOpenResetAll,
+  onUndoBoss,
+  canUndoBoss,
   appLanguage = 'th',
 }) => {
   const t = translations[appLanguage] || translations.th;
@@ -92,6 +96,8 @@ export const BossTableView: React.FC<BossTableViewProps> = ({
                 onTogglePin={onTogglePin}
                 onTestSound={onTestSound}
                 onQuickUpdateTime={onQuickUpdateTime}
+                onUndoBoss={onUndoBoss}
+                canUndoBoss={canUndoBoss}
                 appLanguage={appLanguage}
               />
             ))}

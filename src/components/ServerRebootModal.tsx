@@ -77,7 +77,7 @@ export const ServerRebootModal: React.FC<ServerRebootModalProps> = ({
 
   const [rebootDate, setRebootDate] = useState<string>(getTodayBkk());
   const [rebootTime, setRebootTime] = useState<string>(getTimeBkk());
-  const [syncToSheet, setSyncToSheet] = useState<boolean>(true);
+  const [syncToSheet, setSyncToSheet] = useState<boolean>(false);
   const [searchFilter, setSearchFilter] = useState<string>('');
   const [customHours, setCustomHours] = useState<Record<string, number | undefined>>(() => {
     try {
@@ -225,26 +225,7 @@ export const ServerRebootModal: React.FC<ServerRebootModalProps> = ({
         throw new Error('ไม่สามารถบันทึกสถานะรีบูทลงเซิร์ฟเวอร์ได้');
       }
 
-      // 4. If Google Sheets sync is enabled and sheetId is configured
-      if (syncToSheet && sheetConfig?.sheetId) {
-        try {
-          const token = await getAccessToken();
-          if (token) {
-            // Write reboot time to Cell N2
-            await writeRebootTimeToGoogleSheet(sheetConfig.sheetId, rebootTimeFormatted);
-
-            // Write bosses table to Google Sheets
-            const bossesToWrite = targetServer === 'all' 
-              ? fullUpdatedBosses 
-              : fullUpdatedBosses.filter((b) => b.server === targetServer);
-            await writeBossesToGoogleSheet(sheetConfig.sheetId, bossesToWrite);
-          }
-        } catch (sheetErr) {
-          console.warn('Sheet sync on reboot failed:', sheetErr);
-        }
-      }
-
-      // 5. Update local state & complete
+      // 4. Update local state & complete (Google Sheets sync cancelled completely as requested)
       onRebootComplete(fullUpdatedBosses);
       setStatusMsg({
         type: 'success',
@@ -543,30 +524,6 @@ export const ServerRebootModal: React.FC<ServerRebootModalProps> = ({
                 </tbody>
               </table>
             </div>
-          </div>
-
-          {/* Section 4: Google Sheets Sync Checkbox */}
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <TableProperties className="w-4 h-4 text-emerald-400" />
-              <div>
-                <div className="text-xs font-bold text-slate-200">
-                  อัปเดตเวลารีบูทและผลการคำนวณลง Google Sheets ทันที
-                </div>
-                <div className="text-[11px] text-slate-500">
-                  เขียนเวลาเสร็จลงเซลล์ N2 และบันทึกเวลาเกิดใหม่ของบอสลงตารางชีต
-                </div>
-              </div>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={syncToSheet}
-                onChange={(e) => setSyncToSheet(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-            </label>
           </div>
         </div>
 

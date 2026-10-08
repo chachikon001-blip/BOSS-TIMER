@@ -24,6 +24,8 @@ interface BossCardProps {
   onTogglePin?: (bossId: string) => void;
   onTestSound?: (boss: Boss) => void;
   onQuickUpdateTime?: (bossId: string, newTimeStr: string | null) => void;
+  onUndoBoss?: (bossId: string) => void;
+  canUndoBoss?: (bossId: string) => boolean;
   appLanguage?: AppLanguage;
 }
 
@@ -34,6 +36,8 @@ export const BossCard: React.FC<BossCardProps> = ({
   onTogglePin,
   onTestSound,
   onQuickUpdateTime,
+  onUndoBoss,
+  canUndoBoss,
   appLanguage = 'th',
 }) => {
   const t = translations[appLanguage] || translations.th;
@@ -180,18 +184,22 @@ export const BossCard: React.FC<BossCardProps> = ({
       <div className="px-4 py-3 bg-slate-950/50 my-2 border-y border-slate-800/80">
         <div className="flex items-baseline justify-between">
           <span className="text-[11px] font-medium text-slate-400">
-            {timeInfo.isAlive ? 'ระยะเวลาที่เกิดมาแล้ว' : 'เวลาเกิดรอบถัดไป'}
+            {timeInfo.isAlive 
+              ? (appLanguage === 'en' ? 'Elapsed Time Since Spawn' : 'ระยะเวลาที่เกิดมาแล้ว') 
+              : (appLanguage === 'en' ? 'Next Spawn Time' : 'เวลาเกิดรอบถัดไป')}
           </span>
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-slate-300 font-mono-num font-bold">
-              {boss.nextSpawnAt ? new Date(boss.nextSpawnAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.' : '--:--'}
+              {boss.nextSpawnAt 
+                ? new Date(boss.nextSpawnAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + (appLanguage === 'en' ? '' : ' น.') 
+                : '--:--'}
             </span>
             {boss.nextSpawnAt && onQuickUpdateTime && (
               <button
                 type="button"
                 onClick={() => onQuickUpdateTime(boss.id, null)}
                 className="p-0.5 hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 rounded transition"
-                title="รีเซ็ตเวลาเกิดเป็น --:--"
+                title={appLanguage === 'en' ? 'Reset spawn time to --:--' : 'รีเซ็ตเวลาเกิดเป็น --:--'}
               >
                 <RotateCcw className="w-3 h-3" />
               </button>
@@ -262,14 +270,28 @@ export const BossCard: React.FC<BossCardProps> = ({
           </div>
         )}
 
-        {/* Quick Kill Button */}
-        <button
-          onClick={() => onKillNow(boss.id)}
-          className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-red-600/90 via-rose-600/90 to-red-700 hover:from-red-500 hover:to-rose-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-red-950/50 flex items-center justify-center gap-2 transition transform active:scale-[0.98]"
-        >
-          <Skull className="w-4 h-4" />
-          <span>{appLanguage === 'en' ? 'Killed (Record this time)' : 'ตายแล้ว (บันทึกเวลานี้)'}</span>
-        </button>
+        {/* Quick Kill Button & Undo Button */}
+        <div className="space-y-1.5">
+          {canUndoBoss && canUndoBoss(boss.id) && onUndoBoss && (
+            <button
+              type="button"
+              onClick={() => onUndoBoss(boss.id)}
+              className="w-full py-1.5 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 animate-pulse"
+              title={appLanguage === 'en' ? 'Undo last change for this boss' : '↩️ ย้อนกลับการแก้ไขล่าสุดของบอสตัวนี้'}
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+              <span>{appLanguage === 'en' ? 'Undo Last Change' : '↩️ ย้อนกลับการแก้ไขล่าสุด'}</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => onKillNow(boss.id)}
+            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-red-600/90 via-rose-600/90 to-red-700 hover:from-red-500 hover:to-rose-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-red-950/50 flex items-center justify-center gap-2 transition transform active:scale-[0.98]"
+          >
+            <Skull className="w-4 h-4" />
+            <span>{appLanguage === 'en' ? 'Killed (Record this time)' : 'ตายแล้ว (บันทึกเวลานี้)'}</span>
+          </button>
+        </div>
       </div>
     </div>
   );

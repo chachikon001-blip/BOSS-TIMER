@@ -36,7 +36,7 @@ import {
   loadLocalCache 
 } from './services/offlineSync';
 import { formatRemainingTime } from './utils/time';
-import { Shield, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+import { Shield, Sparkles, AlertCircle, RefreshCw, RotateCcw } from 'lucide-react';
 import { getApiUrl, getLiveShareUrl } from './services/apiConfig';
 import { deduplicateBossList } from './utils/bossDeduplication';
 import {
@@ -193,6 +193,17 @@ export default function App() {
 
   // Floating Notifications & Toast Queue
   const [notifications, setNotifications] = useState<AlertNotification[]>([]);
+
+  // History stack for Undo action (ปุ่มย้อนกลับการแก้ไข)
+  const [undoHistory, setUndoHistory] = useState<{
+    id: string;
+    bossId: string;
+    bossName: string;
+    previousBoss: Boss;
+    actionType: 'kill' | 'quick_time' | 'edit';
+    description: string;
+    timestamp: number;
+  }[]>([]);
 
   const addNotification = useCallback((item: AlertNotification) => {
     setNotifications((prev) => {
@@ -598,10 +609,65 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // ระบบย้อนกลับการแก้ไข (Undo System)
+  const handleUndo = useCallback((targetHistoryId?: string) => {
+    setUndoHistory((prev) => {
+      if (prev.length === 0) return prev;
+      const targetItem = targetHistoryId ? prev.find((h) => h.id === targetHistoryId) : prev[0];
+      if (!targetItem) return prev;
+
+      const restoredBoss = { ...targetItem.previousBoss };
+      setBosses((bList) => {
+        const next = bList.map((b) => (b.id === restoredBoss.id ? restoredBoss : b));
+        saveLocalCache(next);
+        return next;
+      });
+
+      saveBossToFirestore(restoredBoss).catch(() => {});
+      if (navigator.onLine) {
+        fetch(getApiUrl('/api/bosses/update'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(restoredBoss),
+        }).catch(() => {});
+      }
+
+      addNotification({
+        id: `undo-success-${Date.now()}`,
+        type: 'success',
+        title: '↩️ ย้อนกลับการแก้ไขสำเร็จ',
+        message: `คืนค่าข้อมูลและเวลาเกิดของ "${targetItem.bossName}" เรียบร้อยแล้ว`,
+        timestamp: Date.now(),
+      });
+
+      return prev.filter((h) => h.id !== targetItem.id);
+    });
+  }, [addNotification]);
+
+  const handleUndoBoss = useCallback((bossId: string) => {
+    const item = undoHistory.find((h) => h.bossId === bossId);
+    if (item) {
+      handleUndo(item.id);
+    }
+  }, [undoHistory, handleUndo]);
+
   // Actions: กดอัปเดตจะเอาเวลาเกิดมา + กับรอบเกิด แล้วหาเวลาใหม่ทันที
   const handleKillNow = async (bossId: string) => {
     const targetBoss = bosses.find((b) => b.id === bossId);
     if (!targetBoss) return;
+
+    // บันทึกประวัติการเปลี่ยนแปลงสำหรับปุ่มย้อนกลับ (Undo)
+    const historyId = `hist-kill-${bossId}-${Date.now()}`;
+    const historyItem = {
+      id: historyId,
+      bossId: targetBoss.id,
+      bossName: targetBoss.name,
+      previousBoss: JSON.parse(JSON.stringify(targetBoss)),
+      actionType: 'kill' as const,
+      description: `กดอัปเดต (+${(targetBoss.respawnMinutes / 60).toFixed(1)} ชม.)`,
+      timestamp: Date.now(),
+    };
+    setUndoHistory((prev) => [historyItem, ...prev.slice(0, 19)]);
 
     const killerName = currentUser?.displayName || currentUser?.username || 'สมาชิก';
 
@@ -655,6 +721,8 @@ export default function App() {
       title: `อัปเดต ${targetBoss.name} ${serverLabel} สำเร็จ`,
       message: `คำนวณเวลาเกิดใหม่เป็น ${newFormatted} น. (+รอบเกิด ${(targetBoss.respawnMinutes / 60).toFixed(1)} ชม.)`,
       timestamp: Date.now(),
+      onUndo: () => handleUndo(historyId),
+      undoLabel: 'ย้อนกลับ',
     });
 
     if (navigator.onLine) {
@@ -684,6 +752,23 @@ export default function App() {
   };
 
   const handleSaveBoss = async (updated: Partial<Boss> & { id: string }) => {
+    const existing = bosses.find((b) => b.id === updated.id);
+    if (existing) {
+      const historyId = `hist-edit-${updated.id}-${Date.now()}`;
+      setUndoHistory((prev) => [
+        {
+          id: historyId,
+          bossId: existing.id,
+          bossName: existing.name,
+          previousBoss: JSON.parse(JSON.stringify(existing)),
+          actionType: 'edit',
+          description: 'แก้ไขข้อมูลบอส',
+          timestamp: Date.now(),
+        },
+        ...prev.slice(0, 19),
+      ]);
+    }
+
     let targetToSave: Boss | undefined;
     setBosses((prev) => {
       const next = prev.map((b) => {
@@ -718,6 +803,20 @@ export default function App() {
 
   const handleQuickUpdateTime = async (bossId: string, newTimeIso: string | null) => {
     const targetBoss = bosses.find((b) => b.id === bossId);
+    if (!targetBoss) return;
+
+    const historyId = `hist-time-${bossId}-${Date.now()}`;
+    const historyItem = {
+      id: historyId,
+      bossId: targetBoss.id,
+      bossName: targetBoss.name,
+      previousBoss: JSON.parse(JSON.stringify(targetBoss)),
+      actionType: 'quick_time' as const,
+      description: newTimeIso ? 'ปรับเปลี่ยนเวลาเกิด' : 'รีเซ็ตเวลาเป็น --:--',
+      timestamp: Date.now(),
+    };
+    setUndoHistory((prev) => [historyItem, ...prev.slice(0, 19)]);
+
     handleSaveBoss({
       id: bossId,
       nextSpawnAt: newTimeIso,
@@ -732,6 +831,8 @@ export default function App() {
         ? `อัปเดตเวลาเกิดของ ${targetBoss?.name || 'บอส'} เรียบร้อยแล้ว`
         : `รีเซ็ตเวลาเกิดของ ${targetBoss?.name || 'บอส'} กลับเป็น --:-- เรียบร้อยแล้ว`,
       timestamp: Date.now(),
+      onUndo: () => handleUndo(historyId),
+      undoLabel: 'ย้อนกลับ',
     });
   };
 
@@ -1361,6 +1462,44 @@ export default function App() {
           />
         </div>
 
+        {/* Undo Action Banner */}
+        {undoHistory.length > 0 && (
+          <div className="mb-4 p-3 rounded-2xl bg-amber-950/40 border border-amber-500/50 flex flex-wrap items-center justify-between gap-3 shadow-xl backdrop-blur-md animate-fade-in">
+            <div className="flex items-center gap-2.5 text-xs text-amber-200">
+              <div className="p-1.5 rounded-xl bg-amber-500/20 text-amber-400">
+                <RotateCcw className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="font-bold text-amber-300">
+                  ย้อนกลับการแก้ไขล่าสุด ({undoHistory.length} รายการ):
+                </span>
+                <span className="ml-1 text-slate-200">
+                  <strong className="text-white">{undoHistory[0].bossName}</strong> — {undoHistory[0].description}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleUndo()}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition"
+                title="ย้อนกลับการแก้ไขล่าสุดทันที"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>↩️ ย้อนกลับ (Undo)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setUndoHistory([])}
+                className="px-2.5 py-1.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 text-xs transition"
+                title="ล้างประวัติการย้อนกลับ"
+              >
+                ล้างประวัติ
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Boss List: Table View (As requested in image) or Grid View */}
         {filteredBosses.length > 0 ? (
           viewMode === 'table' ? (
@@ -1386,6 +1525,8 @@ export default function App() {
               }
               onQuickUpdateTime={handleQuickUpdateTime}
               onOpenResetAll={() => setIsResetAllOpen(true)}
+              onUndoBoss={handleUndoBoss}
+              canUndoBoss={(id) => undoHistory.some((u) => u.bossId === id)}
               appLanguage={settings.appLanguage || 'th'}
             />
           ) : (
@@ -1403,9 +1544,9 @@ export default function App() {
                       settings.soundVolume,
                       settings.customSoundUrl,
                       {
-                        name: b.name,
-                        server: b.server,
-                        serverTag: b.serverTag || (b.server === 'main' ? 'T3' : 'S1'),
+                        name: boss.name,
+                        server: boss.server,
+                        serverTag: boss.serverTag || (boss.server === 'main' ? 'T3' : 'S1'),
                         minutesLeft: 3,
                       },
                       settings.ttsLanguage || 'thai_only',
@@ -1413,6 +1554,8 @@ export default function App() {
                     )
                   }
                   onQuickUpdateTime={handleQuickUpdateTime}
+                  onUndoBoss={handleUndoBoss}
+                  canUndoBoss={(id) => undoHistory.some((u) => u.bossId === id)}
                   appLanguage={settings.appLanguage || 'th'}
                 />
               ))}
@@ -1469,6 +1612,7 @@ export default function App() {
           onClose={() => setIsSettingsOpen(false)}
           settings={settings}
           onSave={handleSaveSettings}
+          currentUser={currentUser}
           onOpenSheets={() => {
             setIsSettingsOpen(false);
             setIsSheetsOpen(true);

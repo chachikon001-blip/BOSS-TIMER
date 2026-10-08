@@ -406,6 +406,30 @@ export const EditBossModal: React.FC<EditBossModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={() => {
+                if (boss) {
+                  setName(boss.name);
+                  setServer(boss.server);
+                  setServerTag(boss.serverTag || (boss.server === 'main' ? 'T3' : 'S1'));
+                  setLocation(boss.location);
+                  setRespawnHours(Math.floor(boss.respawnMinutes / 60));
+                  setRespawnMins(boss.respawnMinutes % 60);
+                  setLastKilledAt(toLocalISOString(boss.lastKilledAt));
+                  setNextSpawnAt(toLocalISOString(boss.nextSpawnAt));
+                  setNotes(boss.notes || '');
+                  const colorInfo = getBossColorInfo(boss);
+                  setSpawnChance(boss.spawnChance ?? colorInfo.spawnChance);
+                  setSpawnColor(boss.spawnColor || colorInfo.spawnColor);
+                }
+              }}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              title="ย้อนกลับข้อมูลในฟอร์มเป็นค่าเดิมก่อนแก้"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+              <span>ย้อนกลับเป็นค่าเดิม</span>
+            </button>
+            <button
               onClick={onClose}
               className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
             >
