@@ -169,7 +169,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // Test Discord Room 1: Send Top 30
   const handleTestDiscordTop30 = async () => {
-    const url = localSettings.discordTop30WebhookUrl || localSettings.discordWebhookUrl;
+    const rawUrl = localSettings.discordTop30WebhookUrl || localSettings.discordWebhookUrl || '';
+    const url = rawUrl.trim();
     if (!url) {
       setTestDiscordTop30Status({ 
         loading: false, 
@@ -178,15 +179,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
       return;
     }
-    setTestDiscordTop30Status({ loading: true });
+
+    if (!url.startsWith('https://discord.com/api/webhooks/') && !url.startsWith('https://discordapp.com/api/webhooks/')) {
+      setTestDiscordTop30Status({ 
+        loading: false, 
+        success: false, 
+        msg: 'รูปแบบ URL ไม่ถูกต้อง ต้องขึ้นต้นด้วย https://discord.com/api/webhooks/...' 
+      });
+      return;
+    }
+
+    setTestDiscordTop30Status({ loading: true, msg: 'กำลังส่งข้อมูลเข้า Discord...' });
     try {
       const res = await fetch(getApiUrl('/api/discord/send-top30'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-      const data = await res.json();
-      if (res.ok) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
         setTestDiscordTop30Status({ 
           loading: false, 
           success: true, 
@@ -196,14 +207,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setTestDiscordTop30Status({ 
           loading: false, 
           success: false, 
-          msg: data.error || (currentLang === 'en' ? 'Send failed' : 'ส่งไม่สำเร็จ') 
+          msg: data?.error || (currentLang === 'en' ? 'Send failed' : 'ส่งไม่สำเร็จ กรุณาตรวจสอบ Webhook URL') 
         });
       }
-    } catch {
+    } catch (err: unknown) {
+      // Direct browser dispatch fallback if server proxy cannot be reached
+      try {
+        const top30Res = await fetch(getApiUrl('/api/bosses/top30'));
+        const top30Data = await top30Res.json().catch(() => null);
+        const lines: string[] = top30Data?.lines || [];
+        const clientPayload = {
+          username: 'Boss Timer (บอส 30 ตัว)',
+          embeds: [
+            {
+              title: `⚔️ รายชื่อบอส 30 ตัวที่ใกล้ที่สุด (${lines.length} ตัว)`,
+              description: lines.join('\n') || '*(ขณะนี้ยังไม่มีบอสที่กำลังจะเกิด)*',
+              color: 0x3b82f6,
+              footer: {
+                text: `🔄 ส่งตรงจากเบราว์เซอร์ • ${new Date().toLocaleTimeString('th-TH')} น.`,
+              },
+            },
+          ],
+        };
+
+        const directRes = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(clientPayload),
+        });
+
+        if (directRes.ok) {
+          setTestDiscordTop30Status({ 
+            loading: false, 
+            success: true, 
+            msg: 'ส่งรายชื่อ 30 ตัวเข้า Discord เรียบร้อยแล้ว (Direct)!' 
+          });
+          return;
+        } else {
+          const directText = await directRes.text().catch(() => '');
+          if (directRes.status === 401 || directText.includes('Invalid Webhook Token')) {
+            setTestDiscordTop30Status({
+              loading: false,
+              success: false,
+              msg: 'Discord แจ้งเตือน: Token ของ Webhook ไม่ถูกต้องหรือหมดอายุ (โปรดคัดลอก Webhook URL ใหม่จาก Discord)'
+            });
+            return;
+          }
+        }
+      } catch {}
+
+      const errMsg = err instanceof Error ? err.message : '';
       setTestDiscordTop30Status({ 
         loading: false, 
         success: false, 
-        msg: currentLang === 'en' ? 'Connection failed' : 'การเชื่อมต่อผิดพลาด' 
+        msg: errMsg ? `การเชื่อมต่อผิดพลาด (${errMsg})` : 'การเชื่อมต่อผิดพลาด กรุณาลองใหม่อีกครั้ง' 
       });
     }
   };
@@ -754,9 +811,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     type="url"
                     placeholder={currentLang === 'en' ? 'https://discord.com/api/webhooks/... (Webhook Channel 1: Top 30 Bosses)' : 'https://discord.com/api/webhooks/... (Webhook ห้องที่ 1: บอส 30 ตัว)'}
                     value={localSettings.discordTop30WebhookUrl || ''}
-                    onChange={(e) => setLocalSettings({ ...localSettings, discordTop30WebhookUrl: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-hidden focus:border-indigo-500"
+                    onChange={(e) => setLocalSettings({ ...localSettings, discordTop30WebhookUrl: e.target.value.trim() })}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-hidden focus:border-indigo-500 font-mono"
                   />
+                  <div className="text-[11px] text-slate-400 bg-slate-900/60 p-2 rounded-md border border-slate-800">
+                    💡 <strong>วิธีนำ Webhook มาใส่:</strong> ใน Discord คลิกขวาที่ห้อง &gt; <em>Edit Channel</em> &gt; <em>Integrations</em> &gt; <em>Webhooks</em> &gt; กดปุ่ม <em>Copy Webhook URL</em> แล้วนำมาวางที่นี่ (ตรวจสอบให้ครบถ้วน)
+                  </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <div className="flex items-center gap-2">

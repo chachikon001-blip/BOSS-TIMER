@@ -554,15 +554,19 @@ function generateTop30DiscordPayload() {
 
 // Discord Webhook Dispatcher (Room 1: Top 30 Nearest Bosses)
 // Sends and in-place PATCHes the 30 closest bosses list
-async function dispatchDiscordTop30(webhookUrl: string, forceNew = false): Promise<boolean> {
-  if (!webhookUrl) return false;
+async function dispatchDiscordTop30(
+  webhookUrl: string, 
+  forceNew = false
+): Promise<{ success: boolean; error?: string; status?: number }> {
+  const cleanUrl = webhookUrl?.trim();
+  if (!cleanUrl) return { success: false, error: 'ไม่ได้ระบุ Webhook URL' };
 
   const { payload } = generateTop30DiscordPayload();
 
   // If we have a previous message ID on this webhook and not forcing new, edit it in place (PATCH)
-  if (!forceNew && lastTop30MessageId && lastTop30WebhookUrl === webhookUrl) {
+  if (!forceNew && lastTop30MessageId && lastTop30WebhookUrl === cleanUrl) {
     try {
-      const match = webhookUrl.match(/https:\/\/(?:ptb\.|canary\.)?discord\.com\/api\/webhooks\/(\d+)\/([^/?]+)/);
+      const match = cleanUrl.match(/https:\/\/(?:ptb\.|canary\.)?discord\.com\/api\/webhooks\/(\d+)\/([^/?]+)/);
       if (match) {
         const [, whId, whToken] = match;
         const patchUrl = `https://discord.com/api/webhooks/${whId}/${whToken}/messages/${lastTop30MessageId}`;
@@ -572,7 +576,7 @@ async function dispatchDiscordTop30(webhookUrl: string, forceNew = false): Promi
           body: JSON.stringify(payload),
         });
         if (patchRes.ok) {
-          return true;
+          return { success: true };
         }
       }
     } catch {
@@ -582,26 +586,45 @@ async function dispatchDiscordTop30(webhookUrl: string, forceNew = false): Promi
 
   // Send new message with ?wait=true to capture ID
   try {
-    const postUrl = webhookUrl.includes('?') ? `${webhookUrl}&wait=true` : `${webhookUrl}?wait=true`;
+    const postUrl = cleanUrl.includes('?') ? `${cleanUrl}&wait=true` : `${cleanUrl}?wait=true`;
     const res = await fetch(postUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
     if (res.ok) {
       try {
         const json = (await res.json()) as { id?: string };
         if (json && json.id) {
           lastTop30MessageId = json.id;
-          lastTop30WebhookUrl = webhookUrl;
+          lastTop30WebhookUrl = cleanUrl;
         }
       } catch {}
-      return true;
+      return { success: true };
     }
-    return false;
-  } catch (err) {
-    console.error('Failed to dispatch Discord Top 30:', err);
-    return false;
+
+    const errText = await res.text().catch(() => '');
+    let thaiError = `Discord ตอบกลับรหัส ${res.status}`;
+    if (res.status === 401 || errText.includes('Invalid Webhook Token') || errText.includes('50027')) {
+      thaiError = 'Discord แจ้งเตือน: Token ของ Webhook ไม่ถูกต้องหรือหมดอายุ (รหัส 401: Invalid Webhook Token - โปรดคัดลอก Webhook URL ใหม่จาก Discord ให้ครบถ้วน)';
+    } else if (res.status === 404 || errText.includes('Unknown Webhook') || errText.includes('10015')) {
+      thaiError = 'Discord แจ้งเตือน: ไม่พบห้อง Discord นี้หรือ Webhook ถูกลบไปแล้ว (รหัส 404: Unknown Webhook - โปรดสร้าง Webhook ใหม่)';
+    } else if (res.status === 429) {
+      thaiError = 'Discord แจ้งเตือน: ส่งข้อความถี่เกินไป (รหัส 429: Rate limit - กรุณารอสักครู่แล้วลองใหม่)';
+    } else if (errText) {
+      try {
+        const errJson = JSON.parse(errText);
+        if (errJson.message) thaiError = `Discord แจ้งเตือน: ${errJson.message}`;
+      } catch {
+        thaiError = `Discord แจ้งเตือน: ${errText.slice(0, 120)}`;
+      }
+    }
+
+    return { success: false, error: thaiError, status: res.status };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ Discord ได้';
+    return { success: false, error: msg };
   }
 }
 
@@ -1169,15 +1192,17 @@ app.post('/api/test-webhook', async (req: Request, res: Response) => {
 // Manual / Triggered Dispatch for 30 Nearest Bosses to Discord
 app.post('/api/discord/send-top30', async (req: Request, res: Response) => {
   const { url } = req.body;
-  const targetUrl = url || state.settings.discordTop30WebhookUrl || state.settings.discordWebhookUrl;
+  const targetUrl = (url || state.settings.discordTop30WebhookUrl || state.settings.discordWebhookUrl)?.trim();
   if (!targetUrl) {
     return res.status(400).json({ error: 'กรุณากรอก Webhook URL สำหรับบอส 30 ตัว' });
   }
 
   try {
-    const success = await dispatchDiscordTop30(targetUrl, true);
-    if (!success) {
-      return res.status(500).json({ error: 'ส่งรายชื่อบอส 30 ตัวเข้า Discord ไม่สำเร็จ ตรวจสอบ URL' });
+    const result = await dispatchDiscordTop30(targetUrl, true);
+    if (!result.success) {
+      return res.status(400).json({ 
+        error: result.error || 'ส่งรายชื่อบอส 30 ตัวเข้า Discord ไม่สำเร็จ ตรวจสอบ URL' 
+      });
     }
     res.json({ success: true, message: 'ส่งรายชื่อบอส 30 ตัวที่ใกล้ที่สุดเข้า Discord เรียบร้อยแล้ว!' });
   } catch (err: unknown) {
