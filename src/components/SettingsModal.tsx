@@ -791,27 +791,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   {/* Live Preview Box for Room 1 */}
                   {showTop30Preview && (
-                    <div className="mt-3 p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2 animate-fadeIn">
+                    <div className="mt-3 p-3.5 rounded-xl bg-slate-950 border border-indigo-500/40 space-y-2.5 animate-fadeIn shadow-xl">
                       <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
-                        <span className="font-bold text-amber-400">📋 ตัวอย่างรูปแบบข้อความห้องส่ง 30 ตัว ({previewTop30Lines.length} ตัว):</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-amber-400">🗡️ Upcoming Boss Spawns (Discord Preview)</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold">
+                            {previewTop30Lines.length} ตัว
+                          </span>
+                        </div>
                         <button 
                           type="button"
                           onClick={() => setShowTop30Preview(false)}
-                          className="text-slate-500 hover:text-slate-300 text-[11px]"
+                          className="text-slate-400 hover:text-white text-xs font-semibold px-2 py-0.5 rounded bg-slate-800"
                         >
-                          ปิด
+                          ✕ ปิด
                         </button>
                       </div>
-                      <div className="font-mono text-[11px] text-slate-200 max-h-48 overflow-y-auto space-y-1 bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
+
+                      <div className="p-3.5 rounded-lg bg-[#2b2d31] border-l-4 border-l-[#3498db] border border-slate-800 text-slate-100 shadow-inner">
+                        <div className="text-sm font-bold flex items-center justify-between text-white mb-2 pb-1.5 border-b border-slate-700/60">
+                          <span className="flex items-center gap-1.5">
+                            <span>⚔️ ตารางบอส 30 ตัวที่ใกล้ที่สุด</span>
+                          </span>
+                          <span className="text-[11px] font-normal text-emerald-400">
+                            🟢 อัปเดตอัตโนมัติตลอดเวลา
+                          </span>
+                        </div>
                         {previewTop30Lines.length === 0 ? (
-                          <p className="text-slate-500 italic">กำลังโหลด หรือยังไม่มีบอสที่รอเวลาเกิด...</p>
+                          <div className="text-xs text-slate-400 italic py-3 text-center bg-[#1e1f22] rounded-md">
+                            (ขณะนี้ยังไม่มีบอสที่กำลังจะเกิด - เมื่อมีเวลาเกิดจะแสดง 30 ตัวที่ใกล้ที่สุดอัตโนมัติ)
+                          </div>
                         ) : (
-                          previewTop30Lines.map((line, i) => (
-                            <div key={i} className="leading-relaxed hover:bg-slate-800/50 px-1 py-0.5 rounded">
-                              {line}
-                            </div>
-                          ))
+                          <div className="font-sans text-xs leading-relaxed text-slate-200 bg-[#1e1f22] p-2.5 rounded-md border border-slate-800 space-y-1 max-h-80 overflow-y-auto">
+                            {previewTop30Lines.map((line, idx) => (
+                              <div key={idx} className="flex items-center gap-2 hover:bg-slate-800/60 px-2 py-1 rounded transition text-xs">
+                                <span className="text-slate-500 font-mono text-[11px] w-5 text-right shrink-0">{idx + 1}.</span>
+                                <span className="text-slate-100 font-medium">{line}</span>
+                              </div>
+                            ))}
+                          </div>
                         )}
+                        <div className="mt-2 text-[10px] text-slate-400 text-right">
+                          💡 ตัวที่เกินเวลาแล้วจะถูกข้ามอัตโนมัติ และดึงตัวที่ใกล้ถึงที่สุดขึ้นมาแทน
+                        </div>
                       </div>
                     </div>
                   )}

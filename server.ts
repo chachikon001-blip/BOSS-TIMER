@@ -427,6 +427,11 @@ const PRESET_BOSS_COLOR_CONFIG: Record<string, { spawnChance: number; spawnColor
   'core': { spawnChance: 33, spawnColor: '#f4cccc' },
   'มด 3': { spawnChance: 33, spawnColor: '#f4cccc' },
   'ant3': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'ant 3': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'ant': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'มด': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'ควีนแอนท์': { spawnChance: 33, spawnColor: '#f4cccc' },
+  'queen ant': { spawnChance: 33, spawnColor: '#f4cccc' },
   'ดราก้อนบีสต์': { spawnChance: 33, spawnColor: '#f4cccc' },
   'db': { spawnChance: 33, spawnColor: '#f4cccc' },
   'ออร์เฟน': { spawnChance: 33, spawnColor: '#f4cccc' },
@@ -472,30 +477,48 @@ let lastTop30MessageId: string | null = null;
 let lastTop30WebhookUrl: string | null = null;
 let top30DebounceTimer: NodeJS.Timeout | null = null;
 
-// Discord Webhook Dispatcher (Room 1: Top 30 Nearest Bosses)
-// Follows user requirement 4:
-// 1) Filter out bosses whose spawn time has already passed ("ตัวที่เกินเวลาเเล้วไม่ต้องขึ้นไห้ข้าม")
-// 2) Look at closest upcoming spawn first ("เเละดูตัวที่ไกล้ถึงที่สุดมาก่อน")
-// 3) Keep 30 closest bosses always updated without having to resend ("ไห้ขึ้น30ตัวที่ไกล้ที่สุดไว้ตลอดโดยไม่ต้องกดส่งใหม่")
-// 4) Exact format: "มด 3- Ant3  • 10:51 • 🔴โอกาศเกิก33%  [B2]"
-async function dispatchDiscordTop30(webhookUrl: string): Promise<boolean> {
-  if (!webhookUrl) return false;
+// Format a single boss into the exact format requested by user:
+// มด 3- Ant3  • 10:51 • 🔴โอกาศเกิก33%  [B2]
+function formatTop30BossLine(boss: Boss): string {
+  const spawnDate = new Date(boss.nextSpawnAt!);
+  const timeStr = spawnDate.toLocaleTimeString('th-TH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Bangkok',
+  });
 
+  const { chance, emoji } = getBossSpawnInfo(boss);
+  const badge = `${emoji}โอกาศเกิก${chance}%`;
+
+  let tag = boss.serverTag || '';
+  if (!tag || tag === 'Invasion') {
+    tag = boss.server === 'main'
+      ? (state.settings.mainServerTag || 'B1')
+      : (state.settings.subServerTag || 'B2');
+  }
+
+  return `${boss.name}  • ${timeStr} • ${badge}  [${tag}]`;
+}
+
+// Generate the 30 closest upcoming bosses payload
+// Skips expired bosses (diff <= 0) and prioritizes closest upcoming spawn first
+function generateTop30DiscordPayload() {
   const now = Date.now();
-  // Filter ONLY bosses with future spawn times (> now)
-  // Skip any boss whose spawn time has already passed or is null
-  const upcomingBosses = state.bosses.filter((b) => {
-    if (!b.nextSpawnAt) return false;
-    const ms = new Date(b.nextSpawnAt).getTime();
-    return !isNaN(ms) && ms > now;
-  });
 
-  // Sort ascending: closest upcoming spawn first
-  upcomingBosses.sort((a, b) => {
-    return new Date(a.nextSpawnAt!).getTime() - new Date(b.nextSpawnAt!).getTime();
-  });
+  // Strict filter: Exclude bosses whose spawn time has passed (diff <= 0 or in past)
+  // Only look at upcoming bosses, closest spawn first, up to 30 bosses
+  const upcomingBosses = state.bosses
+    .filter((b) => {
+      if (!b.nextSpawnAt) return false;
+      const ms = new Date(b.nextSpawnAt).getTime();
+      return !isNaN(ms) && ms > now; // Must be strictly in the future, skipping expired bosses
+    })
+    .sort((a, b) => new Date(a.nextSpawnAt!).getTime() - new Date(b.nextSpawnAt!).getTime())
+    .slice(0, 30);
 
-  const top30 = upcomingBosses.slice(0, 30);
+  const lines = upcomingBosses.map((b) => formatTop30BossLine(b));
+
   const nowBkk = new Date().toLocaleTimeString('th-TH', {
     hour: '2-digit',
     minute: '2-digit',
@@ -503,40 +526,41 @@ async function dispatchDiscordTop30(webhookUrl: string): Promise<boolean> {
     timeZone: 'Asia/Bangkok',
   });
 
-  let lines: string[] = [];
-  if (top30.length === 0) {
-    lines = ['*(ขณะนี้ยังไม่มีบอสที่รอเวลาเกิด หรือบอสทั้งหมดเลยเวลาแล้ว กรุณาอัปเดตเวลารอบใหม่)*'];
-  } else {
-    lines = top30.map((b) => {
-      const tag = b.serverTag || (b.server === 'main' ? (state.settings.mainServerTag || 'B1') : (state.settings.subServerTag || 'B2'));
-      const spawnDate = new Date(b.nextSpawnAt!);
-      const spawnClock = spawnDate.toLocaleTimeString('th-TH', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-        timeZone: 'Asia/Bangkok',
-      });
-      const { badge } = getBossSpawnInfo(b);
-      // Format requested: มด 3- Ant3  • 10:51 • 🔴โอกาศเกิก33%  [B2]
-      return `${b.name}  • ${spawnClock} • ${badge}  [${tag}]`;
-    });
-  }
+  const description = lines.length > 0
+    ? lines.join('\n')
+    : '*(ขณะนี้ยังไม่มีบอสที่กำลังจะเกิด - รอการคำนวณรอบใหม่)*';
 
-  const payload = {
-    content: `📋 **[ห้องส่งบอส 30 ตัวที่ใกล้ที่สุด]** • อัปเดตสดอัตโนมัติ: ${nowBkk} น.`,
-    embeds: [
-      {
-        title: `⚔️ รายงานบอส ${top30.length} ตัวที่ใกล้ถึงเวลาเกิดที่สุด (Auto-Live)`,
-        description: lines.join('\n'),
-        color: 0xef4444,
-        footer: { text: `ห้องส่ง 30 ตัวอัตโนมัติ • อัปเดตล่าสุด ${nowBkk} น. (ข้ามตัวที่เกินเวลาแล้ว)` },
-        timestamp: new Date().toISOString(),
-      },
-    ],
+  return {
+    lines,
+    upcomingCount: upcomingBosses.length,
+    description,
+    tableContent: description,
+    embedDescription: description,
+    payload: {
+      username: 'Boss Timer (บอส 30 ตัว)',
+      embeds: [
+        {
+          title: `⚔️ รายชื่อบอส 30 ตัวที่ใกล้ที่สุด (${upcomingBosses.length} ตัว)`,
+          description,
+          color: 0x3b82f6,
+          footer: {
+            text: `🔄 ระบบอัปเดตอัตโนมัติตลอดเวลา (ไม่ต้องกดส่งใหม่) • ล่าสุด ${nowBkk} น.`,
+          },
+        },
+      ],
+    },
   };
+}
 
-  // If we have a previous message ID on this webhook, edit it in place
-  if (lastTop30MessageId && lastTop30WebhookUrl === webhookUrl) {
+// Discord Webhook Dispatcher (Room 1: Top 30 Nearest Bosses)
+// Sends and in-place PATCHes the 30 closest bosses list
+async function dispatchDiscordTop30(webhookUrl: string, forceNew = false): Promise<boolean> {
+  if (!webhookUrl) return false;
+
+  const { payload } = generateTop30DiscordPayload();
+
+  // If we have a previous message ID on this webhook and not forcing new, edit it in place (PATCH)
+  if (!forceNew && lastTop30MessageId && lastTop30WebhookUrl === webhookUrl) {
     try {
       const match = webhookUrl.match(/https:\/\/(?:ptb\.|canary\.)?discord\.com\/api\/webhooks\/(\d+)\/([^/?]+)/);
       if (match) {
@@ -591,13 +615,13 @@ function triggerDiscordTop30AutoDispatch() {
   }, 1500);
 }
 
-// Continuous background ticker: Every 60 seconds, auto-refresh Top 30 so expired bosses drop out
+// Continuous background ticker: Every 30 seconds, auto-refresh Top 30 so expired bosses drop out
 setInterval(() => {
   const url = state.settings.discordTop30WebhookUrl || state.settings.discordWebhookUrl;
   if (state.settings.discordTop30Enabled && url) {
     dispatchDiscordTop30(url).catch(() => {});
   }
-}, 60000);
+}, 30000);
 
 // LINE Webhook / Notification Dispatcher
 async function sendLineNotification(boss: Boss, stage: number) {
@@ -993,17 +1017,9 @@ app.post('/api/settings', (req: Request, res: Response) => {
   res.json({ success: true, settings: state.settings });
 });
 
-// Get Live Top 30 Nearest Upcoming Bosses (Preview endpoint matching user requirement 4)
+// Get Live Top 30 Nearest Upcoming Bosses (Preview endpoint matching user requirement and image)
 app.get('/api/bosses/top30', (_req: Request, res: Response) => {
-  const now = Date.now();
-  const upcomingBosses = state.bosses.filter((b) => {
-    if (!b.nextSpawnAt) return false;
-    const ms = new Date(b.nextSpawnAt).getTime();
-    return !isNaN(ms) && ms > now;
-  });
-
-  upcomingBosses.sort((a, b) => new Date(a.nextSpawnAt!).getTime() - new Date(b.nextSpawnAt!).getTime());
-  const top30 = upcomingBosses.slice(0, 30);
+  const { lines, tableContent, embedDescription, upcomingCount } = generateTop30DiscordPayload();
   const nowBkk = new Date().toLocaleTimeString('th-TH', {
     hour: '2-digit',
     minute: '2-digit',
@@ -1011,24 +1027,13 @@ app.get('/api/bosses/top30', (_req: Request, res: Response) => {
     timeZone: 'Asia/Bangkok',
   });
 
-  const lines = top30.map((b) => {
-    const tag = b.serverTag || (b.server === 'main' ? (state.settings.mainServerTag || 'B1') : (state.settings.subServerTag || 'B2'));
-    const spawnDate = new Date(b.nextSpawnAt!);
-    const spawnClock = spawnDate.toLocaleTimeString('th-TH', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: 'Asia/Bangkok',
-    });
-    const { badge } = getBossSpawnInfo(b);
-    return `${b.name}  • ${spawnClock} • ${badge}  [${tag}]`;
-  });
-
   res.json({
     success: true,
-    count: top30.length,
-    bosses: top30,
+    count: lines.length,
+    upcomingCount,
     lines,
+    tableContent,
+    embedDescription,
     updatedAt: nowBkk,
   });
 });
@@ -1170,7 +1175,7 @@ app.post('/api/discord/send-top30', async (req: Request, res: Response) => {
   }
 
   try {
-    const success = await dispatchDiscordTop30(targetUrl);
+    const success = await dispatchDiscordTop30(targetUrl, true);
     if (!success) {
       return res.status(500).json({ error: 'ส่งรายชื่อบอส 30 ตัวเข้า Discord ไม่สำเร็จ ตรวจสอบ URL' });
     }
